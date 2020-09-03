@@ -14,4 +14,5 @@ program
     .version(packageJson.version, '-v, --version')
     .command('make', 'Translate Elm sources to Morphir IR')
     .command('gen', 'Generate code from Morphir IR')
+    .command('dev', 'Start a web server with dev tooling')
     .parse(process.argv)
