@@ -1615,3 +1615,69 @@ uncurryApply fun lastArg =
 
         _ ->
             ( fun, [ lastArg ] )
+
+
+cyclomaticComplexity : Value ta va -> Int
+cyclomaticComplexity value =
+    let
+        complexity : Dict Name Int -> Value ta va -> Int
+        complexity vars v =
+            case v of
+                Tuple _ elems ->
+                    elems |> List.map (complexity vars) |> List.product
+
+                List _ items ->
+                    items |> List.map (complexity vars) |> List.product
+
+                Record _ fields ->
+                    fields |> List.map (Tuple.second >> complexity vars) |> List.product
+
+                Variable _ varName ->
+                    vars
+                        |> Dict.get varName
+                        |> Maybe.withDefault 1
+
+                Field _ subject _ ->
+                    complexity vars subject
+
+                Apply _ fun arg ->
+                    complexity vars fun * complexity vars arg
+
+                Lambda _ _ body ->
+                    complexity vars body
+
+                LetDefinition _ defName def inValue ->
+                    complexity
+                        (vars |> Dict.insert defName (complexity vars def.body))
+                        inValue
+
+                LetRecursion _ defs inValue ->
+                    complexity
+                        (defs
+                            |> Dict.toList
+                            |> List.foldl
+                                (\( defName, def ) varsSoFar ->
+                                    varsSoFar |> Dict.insert defName (complexity vars def.body)
+                                )
+                                vars
+                        )
+                        inValue
+
+                Destructure _ _ _ inValue ->
+                    complexity vars inValue
+
+                IfThenElse _ cond thenBranch elseBranch ->
+                    complexity vars cond * (complexity vars thenBranch + complexity vars elseBranch)
+
+                PatternMatch _ subject cases ->
+                    complexity vars subject
+                        * (cases |> List.map (Tuple.second >> complexity vars) |> List.sum)
+
+                UpdateRecord _ subject fields ->
+                    complexity vars subject
+                        * (fields |> List.map (Tuple.second >> complexity vars) |> List.product)
+
+                _ ->
+                    1
+    in
+    complexity Dict.empty value
