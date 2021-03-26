@@ -7,6 +7,7 @@ import Morphir.IR.Name as Name
 import Morphir.IR.Path as Path
 import Morphir.IR.Value as Value exposing (Value)
 import Morphir.Visual.Common exposing (VisualTypedValue, nameToText)
+import Morphir.Visual.Components.DataFlow as DataFlow
 import Morphir.Visual.Config exposing (Config)
 import Morphir.Visual.Theme exposing (mediumPadding, smallPadding, smallSpacing)
 
@@ -81,23 +82,10 @@ view config viewValue functionValue argValues =
                     ]
 
             else
-                row
-                    [ smallSpacing config.state.theme |> spacing ]
-                    [ viewValue argValues1
-                    , viewValue functionValue
-                    , viewValue argValues2
-                    ]
+                DataFlow.viewDataFlowChart functionValue argValues
 
         _ ->
-            column [ smallSpacing config.state.theme |> spacing ]
-                [ column [ width fill, centerX, smallSpacing config.state.theme |> spacing ]
-                    [ viewValue functionValue
-                    ]
-                , column [ width fill, centerX, smallSpacing config.state.theme |> spacing ]
-                    (argValues
-                        |> List.map viewValue
-                    )
-                ]
+            DataFlow.viewDataFlowChart functionValue argValues
 
 
 inlineBinaryOperators : Dict String String

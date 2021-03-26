@@ -1,0 +1,90 @@
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Main</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.0.2/dist/echarts.min.js"></script>
+    <script src="/index.js"></script>
+    <script>
+    </script>
+</head>
+
+<body>
+    <div id="myapp"></div>
+    <script>
+        customElements.define('data-flow-chart',
+            class extends HTMLElement {
+                // things required by Custom Elements
+                constructor() { super(); }
+                connectedCallback() { this.render(); }
+                attributeChangedCallback() { this.render(); }
+                static get observedAttributes() { return ['data']; }
+
+                // Our function to set the textContent based on attributes.
+                render() {
+                    if (this.data) {
+                        // based on prepared DOM, initialize echarts instance
+                        this.style = "width:100%; height:100%;";
+                        var myChart = echarts.init(this);
+
+                        // specify chart configuration item and data
+                        var option = {
+
+                            tooltip: {
+                                trigger: 'item',
+                                triggerOn: 'mousemove'
+                            },
+
+                            series: [
+                                {
+                                    type: 'tree',
+
+                                    data: [this.data],
+
+                                    top: '1%',
+                                    left: '15%',
+                                    bottom: '1%',
+                                    right: '15%',
+
+                                    symbolSize: 7,
+
+                                    orient: 'RL',
+
+                                    label: {
+                                        position: 'center',
+                                        verticalAlign: 'bottom',
+                                        align: 'center'
+                                    },
+
+                                    leaves: {
+                                        label: {
+                                            position: 'center',
+                                            verticalAlign: 'bottom',
+                                            align: 'center'
+                                        }
+                                    },
+
+                                    emphasis: {
+                                        focus: 'descendant'
+                                    },
+
+                                    expandAndCollapse: true,
+                                    animationDuration: 550,
+                                    animationDurationUpdate: 750
+                                }
+                            ]
+                        };
+
+                        // use configuration item and data specified to show chart
+                        myChart.setOption(option);
+                    }
+                }
+            }
+        );
+        var app = Elm.Morphir.Web.DevelopApp.init({
+            node: document.getElementById('myapp')
+        });
+    </script>
+</body>
+
+</html>
