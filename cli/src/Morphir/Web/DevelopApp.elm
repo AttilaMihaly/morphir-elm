@@ -3,13 +3,13 @@ module Morphir.Web.DevelopApp exposing (IRState(..), Model, Msg(..), Route(..), 
 import Browser
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Element, alignTop, column, el, fill, height, image, layout, link, minimum, none, padding, paddingXY, px, rgb, row, shrink, spacing, text, width, wrappedRow)
+import Element exposing (Color, Element, alignTop, column, el, fill, height, image, layout, link, minimum, none, padding, paddingXY, px, rgb, row, shrink, spacing, table, text, width, wrappedRow)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
-import Element.Input as Input exposing (labelHidden)
+import Element.Input as Input exposing (button, labelHidden)
 import Http
-import Morphir.Compiler.Codec as CompilerCodec
+import Morphir.Correctness.Test as Test
 import Morphir.IR.Distribution exposing (Distribution(..))
 import Morphir.IR.Distribution.Codec as DistributionCodec
 import Morphir.IR.FQName exposing (FQName)
@@ -17,8 +17,9 @@ import Morphir.IR.Name as Name exposing (Name)
 import Morphir.IR.Type exposing (Type)
 import Morphir.IR.Value as Value exposing (RawValue, TypedValue, Value)
 import Morphir.Value.Interpreter as Interpreter
+import Morphir.Visual.Common exposing (nameToText)
 import Morphir.Visual.Config exposing (Config, PopupScreenRecord)
-import Morphir.Visual.Edit as Edit
+import Morphir.Visual.TestScenarioEditor as TestEditor
 import Morphir.Visual.Theme as Theme
 import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.XRayView as XRayView
@@ -55,7 +56,9 @@ type alias Model =
     , theme : Theme Msg
     , irState : IRState
     , serverState : ServerState
-    , argState : Dict FQName (Dict Name RawValue)
+    , inputStates : Dict FQName (Dict Name RawValue)
+    , outputStates : Dict FQName RawValue
+    , scenarioStates : Dict FQName (List Test.Scenario)
     , expandedValues : Dict ( FQName, Name ) (Value.Definition () (Type ()))
     }
 
@@ -77,7 +80,9 @@ init flags url key =
       , theme = Light.theme scaled
       , irState = IRLoading
       , serverState = ServerReady
-      , argState = Dict.empty
+      , inputStates = Dict.empty
+      , outputStates = Dict.empty
+      , scenarioStates = Dict.empty
       , expandedValues = Dict.empty
       }
     , httpMakeModel
@@ -97,8 +102,10 @@ type Msg
     | ExpandVariable Int (Maybe RawValue)
     | ShrinkVariable Int
     | ValueFilterChanged String
-    | ArgValueUpdated FQName Name RawValue
-    | InvalidArgValue FQName Name String
+    | InputValueUpdated FQName Name (Maybe RawValue)
+    | InvalidInputValue FQName Name String
+    | OutputValueUpdated FQName (Maybe RawValue)
+    | AddScenario FQName
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -155,24 +162,38 @@ update msg model =
             , Cmd.none
             )
 
-        ArgValueUpdated fQName argName rawValue ->
+        InputValueUpdated fQName argName newValue ->
             ( { model
-                | argState =
-                    model.argState
+                | inputStates =
+                    model.inputStates
                         |> Dict.update fQName
                             (\maybeArgs ->
                                 case maybeArgs of
                                     Just args ->
-                                        args |> Dict.insert argName rawValue |> Just
+                                        args |> Dict.update argName (always newValue) |> Just
 
                                     Nothing ->
-                                        Dict.singleton argName rawValue |> Just
+                                        case newValue of
+                                            Nothing ->
+                                                Nothing
+
+                                            Just rawValue ->
+                                                Dict.singleton argName rawValue |> Just
                             )
               }
             , Cmd.none
             )
 
-        InvalidArgValue fQName argName string ->
+        OutputValueUpdated fQName newValue ->
+            ( { model
+                | outputStates =
+                    model.outputStates
+                        |> Dict.update fQName (always newValue)
+              }
+            , Cmd.none
+            )
+
+        InvalidInputValue fQName argName message ->
             ( model, Cmd.none )
 
         ExpandVariable varIndex maybeRawValue ->
@@ -180,6 +201,40 @@ update msg model =
 
         ShrinkVariable varIndex ->
             ( model, Cmd.none )
+
+        AddScenario fQName ->
+            ( { model
+                | scenarioStates =
+                    model.scenarioStates
+                        |> Dict.update fQName
+                            (\currentScenarios ->
+                                let
+                                    newScenario : Maybe Test.Scenario
+                                    newScenario =
+                                        Maybe.map2
+                                            (\inputStates outputState ->
+                                                { description = Nothing
+                                                , inputs = inputStates
+                                                , expectedOutput = outputState
+                                                }
+                                            )
+                                            (model.inputStates |> Dict.get fQName)
+                                            (model.outputStates |> Dict.get fQName)
+                                in
+                                case currentScenarios of
+                                    Just scenarios ->
+                                        newScenario
+                                            |> Maybe.map (\new -> scenarios ++ [ new ])
+                                            |> Maybe.withDefault scenarios
+                                            |> Just
+
+                                    Nothing ->
+                                        newScenario
+                                            |> Maybe.map List.singleton
+                            )
+              }
+            , Cmd.none
+            )
 
 
 
@@ -365,7 +420,8 @@ viewBody model =
         IRLoaded ((Library packageName _ packageDef) as distribution) ->
             case model.route of
                 Home ->
-                    viewAsCard (text "Modules")
+                    viewAsCard (rgb 0.9 0.9 0.9)
+                        (text "Modules")
                         (column
                             [ padding 10
                             , spacing 10
@@ -425,13 +481,15 @@ viewBody model =
                                                 if matchesFilter then
                                                     Just
                                                         (el [ alignTop ]
-                                                            (viewAsCard
+                                                            (viewAsCard (rgb 0.9 0.9 0.9)
                                                                 (column [ spacing 5 ]
                                                                     [ valueName
                                                                         |> Name.toHumanWords
                                                                         |> String.join " "
                                                                         |> text
-                                                                    , viewArgumentEditors model valueFQName accessControlledValueDef.value
+
+                                                                    --, viewArgumentEditors model valueFQName accessControlledValueDef.value
+                                                                    , viewTestScenarios model valueFQName accessControlledValueDef.value
                                                                     ]
                                                                 )
                                                                 (case viewType of
@@ -459,32 +517,6 @@ viewBody model =
 
                 NotFound ->
                     text "Route not found"
-
-
-viewArgumentEditors : Model -> FQName -> Value.Definition () (Type ()) -> Element Msg
-viewArgumentEditors model fQName valueDef =
-    valueDef.inputTypes
-        |> List.map
-            (\( argName, _, argType ) ->
-                row
-                    [ Background.color (rgb 1 1 1)
-                    , Border.rounded 5
-                    , spacing 10
-                    ]
-                    [ el [ paddingXY 10 0 ]
-                        (text (argName |> Name.toHumanWords |> String.join " "))
-                    , el []
-                        (Edit.editValue
-                            argType
-                            (model.argState |> Dict.get fQName |> Maybe.andThen (Dict.get argName))
-                            (ArgValueUpdated fQName argName)
-                            (InvalidArgValue fQName argName)
-                        )
-                    ]
-            )
-        |> wrappedRow
-            [ spacing 5
-            ]
 
 
 scaled : Int -> Int
@@ -583,7 +615,7 @@ viewValue model distribution valueFQName valueDef =
 
         validArgValues : Dict Name (Value () ())
         validArgValues =
-            model.argState
+            model.inputStates
                 |> Dict.get valueFQName
                 |> Maybe.withDefault Dict.empty
 
@@ -609,25 +641,68 @@ viewValue model distribution valueFQName valueDef =
     ViewValue.viewDefinition config valueFQName valueDef
 
 
-viewAsCard : Element msg -> Element msg -> Element msg
-viewAsCard header content =
-    let
-        gray =
-            rgb 0.9 0.9 0.9
+viewTestScenarios : Model -> FQName -> Value.Definition () (Type ()) -> Element Msg
+viewTestScenarios model valueFQName valueDef =
+    viewAsCard (rgb 0.9 1.0 1.0)
+        (text "Test Scenarios")
+        (column [ spacing 5 ]
+            [ table []
+                { data =
+                    model.scenarioStates
+                        |> Dict.get valueFQName
+                        |> Maybe.withDefault []
+                , columns =
+                    valueDef.inputTypes
+                        |> List.map
+                            (\( inputName, _, inputType ) ->
+                                { header = text (nameToText inputName)
+                                , width = fill
+                                , view =
+                                    \scenario ->
+                                        scenario.inputs
+                                            |> Dict.get inputName
+                                            |> Maybe.map (Debug.toString >> text)
+                                            |> Maybe.withDefault (text "n/a")
+                                }
+                            )
+                }
+            , viewAsCard (rgb 0.9 1.0 0.9)
+                (text "Current Scenario")
+                (TestEditor.view
+                    { inputStates = model.inputStates |> Dict.get valueFQName |> Maybe.withDefault Dict.empty
+                    , expectedOutputState = model.outputStates |> Dict.get valueFQName
+                    , onInputUpdated = InputValueUpdated valueFQName
+                    , onInvalidInput = InvalidInputValue valueFQName
+                    , onOutputUpdated = OutputValueUpdated valueFQName
+                    , onInvalidOutput = InvalidInputValue valueFQName []
+                    }
+                    valueDef
+                )
+            , button []
+                { onPress = Just (AddScenario valueFQName)
+                , label = text "Add scenario"
+                }
+            ]
+        )
 
+
+viewAsCard : Color -> Element msg -> Element msg -> Element msg
+viewAsCard frameColor header content =
+    let
         white =
             rgb 1 1 1
     in
     column
-        [ Background.color gray
+        [ Background.color frameColor
         , Border.rounded 3
-        , height (shrink |> minimum 200)
-        , width (shrink |> minimum 200)
+        , height fill
+        , width fill
         , padding 5
         , spacing 5
         ]
         [ el
             [ width fill
+            , height fill
             , padding 2
             , Font.size (scaled 2)
             ]

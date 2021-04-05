@@ -17,7 +17,7 @@ import Morphir.IR.Type as Type exposing (Type)
 import Morphir.IR.Value as Value exposing (RawValue, TypedValue, Value(..), indexedMapValue)
 import Morphir.Type.Infer as Infer exposing (TypeError)
 import Morphir.Visual.BoolOperatorTree as BoolOperatorTree exposing (BoolOperatorTree)
-import Morphir.Visual.Common exposing (VisualTypedValue, definition, nameToText)
+import Morphir.Visual.Common exposing (definition, nameToText)
 import Morphir.Visual.Components.AritmeticExpressions as ArithmeticOperatorTree exposing (ArithmeticOperatorTree)
 import Morphir.Visual.Config as Config exposing (Config)
 import Morphir.Visual.Theme exposing (mediumPadding, mediumSpacing, smallPadding, smallSpacing)
@@ -30,6 +30,7 @@ import Morphir.Visual.ViewList as ViewList
 import Morphir.Visual.ViewLiteral as ViewLiteral
 import Morphir.Visual.ViewReference as ViewReference
 import Morphir.Visual.ViewTuple as ViewTuple
+import Morphir.Visual.VisualValue exposing (VisualValue)
 import Morphir.Visual.XRayView as XRayView
 import Morphir.Web.Theme.Light exposing (gray, silver)
 
@@ -77,12 +78,12 @@ viewDefinition config ( _, _, valueName ) valueDef =
         ]
 
 
-viewValue : Config msg -> VisualTypedValue -> Element msg
+viewValue : Config msg -> VisualValue -> Element msg
 viewValue config value =
     viewValueByValueType config value
 
 
-viewValueByValueType : Config msg -> VisualTypedValue -> Element msg
+viewValueByValueType : Config msg -> VisualValue -> Element msg
 viewValueByValueType config typedValue =
     let
         valueType : Type ()
@@ -109,7 +110,7 @@ viewValueByValueType config typedValue =
         viewValueByLanguageFeature config typedValue
 
 
-viewValueByLanguageFeature : Config msg -> VisualTypedValue -> Element msg
+viewValueByLanguageFeature : Config msg -> VisualValue -> Element msg
 viewValueByLanguageFeature config value =
     let
         valueElem : Element msg
@@ -163,7 +164,7 @@ viewValueByLanguageFeature config value =
 
                 Value.LetDefinition _ _ _ _ ->
                     let
-                        unnest : Config msg -> VisualTypedValue -> ( List ( Name, Element msg ), Element msg )
+                        unnest : Config msg -> VisualValue -> ( List ( Name, Element msg ), Element msg )
                         unnest conf v =
                             case v of
                                 Value.LetDefinition _ defName def inVal ->
@@ -254,7 +255,7 @@ viewPopup config =
                                 (Distribution.lookupPackageSpecification config.irContext.distribution)
                             |> IR.fromPackageSpecifications
 
-                    typedVal : Result TypeError VisualTypedValue
+                    typedVal : Result TypeError VisualValue
                     typedVal =
                         Infer.inferValue references value
                             |> Result.andThen
@@ -307,7 +308,7 @@ viewPopup config =
         ]
 
 
-toVisualTypedValue : TypedValue -> VisualTypedValue
+toVisualTypedValue : TypedValue -> VisualValue
 toVisualTypedValue typedValue =
     typedValue
         |> indexedMapValue Tuple.pair 0

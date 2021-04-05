@@ -4,17 +4,17 @@ import Dict exposing (Dict)
 import Element exposing (Element)
 import Morphir.IR.Literal exposing (Literal(..))
 import Morphir.IR.Value as Value exposing (TypedValue, Value)
-import Morphir.Visual.Common exposing (VisualTypedValue)
+import Morphir.Visual.Common exposing (VisualValue)
 import Morphir.Visual.Components.DecisionTree as DecisionTree exposing (LeftOrRight(..))
 import Morphir.Visual.Config as Config exposing (Config)
 
 
-view : Config msg -> (VisualTypedValue -> Element msg) -> VisualTypedValue -> Element msg
+view : Config msg -> (VisualValue -> Element msg) -> VisualValue -> Element msg
 view config viewValue value =
     DecisionTree.layout config viewValue (valueToTree config True value)
 
 
-valueToTree : Config msg -> Bool -> VisualTypedValue -> DecisionTree.Node
+valueToTree : Config msg -> Bool -> VisualValue -> DecisionTree.Node
 valueToTree config doEval value =
     case value of
         Value.IfThenElse _ condition thenBranch elseBranch ->
