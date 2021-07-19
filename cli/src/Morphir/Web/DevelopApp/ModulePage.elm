@@ -1,4 +1,4 @@
-module Morphir.Web.DevelopApp.ModulePage exposing (..)
+module Morphir.Web.DevelopApp.ModulePage exposing (Handlers, Model, ViewType(..), makeURL, routeParser, viewArgumentEditors, viewModuleControls, viewPage, viewTitle, viewTypeFromString, viewValue)
 
 import Dict exposing (Dict)
 import Element exposing (Element, alignRight, alignTop, column, el, explain, fill, height, link, padding, paddingXY, rgb, row, scrollbars, shrink, spacing, text, width, wrappedRow)
@@ -20,6 +20,7 @@ import Morphir.Visual.ValueEditor as ValueEditor
 import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.XRayView as XRayView
 import Morphir.Web.DevelopApp.Common exposing (viewAsCard)
+import Set exposing (Set)
 import Url.Parser as UrlParser exposing (..)
 import Url.Parser.Query as Query
 
@@ -31,6 +32,7 @@ type alias Model =
     , argState : Dict FQName (Dict Name ValueEditor.EditorState)
     , expandedValues : Dict ( FQName, Name ) (Value.Definition () (Type ()))
     , popupVariables : PopupScreenRecord
+    , valuesToEvaluate : Set Int
     }
 
 
@@ -40,6 +42,7 @@ type alias Handlers msg =
     , shrinkVariable : Int -> msg
     , argValueUpdated : FQName -> Name -> ValueEditor.EditorState -> msg
     , invalidArgValue : FQName -> Name -> String -> msg
+    , valueClicked : FQName -> Int -> msg
     }
 
 
@@ -62,6 +65,7 @@ routeParser =
             , argState = Dict.empty
             , expandedValues = Dict.empty
             , popupVariables = PopupScreenRecord 0 Nothing
+            , valuesToEvaluate = Set.fromList [ 0 ]
             }
         )
         (UrlParser.s "module"
@@ -234,7 +238,8 @@ viewValue handlers model distribution valueFQName valueDef =
         config : Config msg
         config =
             { irContext =
-                { distribution = distribution
+                { ir = IR.fromDistribution distribution
+                , distribution = distribution
                 , nativeFunctions = SDK.nativeFunctions
                 }
             , state =
@@ -242,11 +247,13 @@ viewValue handlers model distribution valueFQName valueDef =
                 , variables = validArgValues
                 , popupVariables = model.popupVariables
                 , theme = Theme.fromConfig Nothing
+                , valuesToEvaluate = model.valuesToEvaluate
                 }
             , handlers =
                 { onReferenceClicked = handlers.expandReference
                 , onHoverOver = handlers.expandVariable
                 , onHoverLeave = handlers.shrinkVariable
+                , onClick = handlers.valueClicked valueFQName
                 }
             }
     in

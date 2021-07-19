@@ -26,6 +26,7 @@ import Morphir.Visual.ValueEditor as ValueEditor
 import Morphir.Web.DevelopApp.Common exposing (insertInList, viewAsCard)
 import Morphir.Web.DevelopApp.FunctionPage as FunctionPage exposing (TestCaseState)
 import Morphir.Web.DevelopApp.ModulePage as ModulePage exposing (makeURL)
+import Set exposing (Set)
 import Url exposing (Url)
 import Url.Parser as UrlParser exposing ((</>), (<?>))
 
@@ -120,6 +121,7 @@ type Msg
     | FunctionEditTestCase Int
     | FunctionSaveTestCase Int
     | SaveTestSuite FunctionPage.Model
+    | ValueClicked FQName Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -791,6 +793,54 @@ update msg model =
                 in
                 ( { model | testSuite = newTestSuite }, httpSaveTestSuite getIR newTestSuite )
 
+        ValueClicked fQName index ->
+            case model.currentPage of
+                Module moduleModel ->
+                    case model.irState of
+                        IRLoaded distro ->
+                            case IR.fromDistribution distro |> IR.lookupValueDefinition fQName of
+                                Just def ->
+                                    let
+                                        newValuesToEvaluate : Set Int
+                                        newValuesToEvaluate =
+                                            if Set.member index moduleModel.valuesToEvaluate then
+                                                case
+                                                    def.body
+                                                        |> Value.indexedMapValue (\i _ -> i) 0
+                                                        |> Tuple.first
+                                                        |> Value.findByIndex index
+                                                        |> Maybe.map (Value.valueChildren >> List.map Value.valueAttribute)
+                                                of
+                                                    Just indexes ->
+                                                        moduleModel.valuesToEvaluate
+                                                            |> Set.remove index
+                                                            |> Set.union (Set.fromList indexes)
+
+                                                    Nothing ->
+                                                        moduleModel.valuesToEvaluate
+
+                                            else
+                                                moduleModel.valuesToEvaluate
+                                    in
+                                    ( { model
+                                        | currentPage =
+                                            Module
+                                                { moduleModel
+                                                    | valuesToEvaluate = Debug.log "valuesToEvaluate" newValuesToEvaluate
+                                                }
+                                      }
+                                    , Cmd.none
+                                    )
+
+                                _ ->
+                                    ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
 
 
 -- SUBSCRIPTIONS
@@ -980,6 +1030,7 @@ viewBody model =
                         , shrinkVariable = ShrinkVariable
                         , argValueUpdated = ArgValueUpdated
                         , invalidArgValue = InvalidArgValue
+                        , valueClicked = ValueClicked
                         }
                         ValueFilterChanged
                         distribution
@@ -1014,6 +1065,7 @@ viewBody model =
                         , editTestCase = FunctionEditTestCase
                         , saveTestCase = FunctionSaveTestCase
                         , saveTestSuite = SaveTestSuite
+                        , valueClicked = ValueClicked functionName
                         }
                         distribution
                         functionPageModel

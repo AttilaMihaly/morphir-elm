@@ -25,7 +25,7 @@ module Morphir.IR.Value exposing
     , definitionToSpecification, uncurryApply, collectVariables, collectDefinitionAttributes, collectPatternAttributes
     , collectValueAttributes, indexedMapPattern, indexedMapValue, mapPatternAttributes, patternAttribute, valueAttribute
     , definitionToValue, rewriteValue, toRawValue, countValueNodes, collectPatternVariables, isData
-    , toString
+    , findByIndex, toString, valueChildren
     )
 
 {-| In functional programming data and logic are treated the same way and we refer to both as values. This module
@@ -1882,3 +1882,76 @@ toString value =
                     "()"
     in
     valueToString value
+
+
+valueChildren : Value ta va -> List (Value ta va)
+valueChildren value =
+    case value of
+        Tuple _ elems ->
+            elems
+
+        List _ items ->
+            items
+
+        Record _ fields ->
+            fields |> List.map Tuple.second
+
+        Field _ subject _ ->
+            [ subject ]
+
+        Apply _ funValue argValue ->
+            [ funValue, argValue ]
+
+        Lambda _ _ body ->
+            [ body ]
+
+        LetDefinition _ _ def inValue ->
+            [ def.body, inValue ]
+
+        LetRecursion _ defs inValue ->
+            (defs |> Dict.values |> List.map .body) ++ [ inValue ]
+
+        Destructure _ _ bindValue inValue ->
+            [ bindValue, inValue ]
+
+        IfThenElse _ cond thenBranch elseBranch ->
+            [ cond, thenBranch, elseBranch ]
+
+        PatternMatch _ subject cases ->
+            subject :: (cases |> List.map Tuple.second)
+
+        UpdateRecord _ subject fields ->
+            subject :: (fields |> List.map Tuple.second)
+
+        _ ->
+            []
+
+
+findByIndex : Int -> Value ta va -> Maybe (Value ta va)
+findByIndex index value =
+    let
+        indexedValue : Value ta ( Int, va )
+        indexedValue =
+            indexedMapValue Tuple.pair 0 value
+                |> Tuple.first
+
+        find : Value ta ( Int, va ) -> Maybe (Value ta ( Int, va ))
+        find v =
+            if Tuple.first (valueAttribute v) == index then
+                Just v
+
+            else
+                valueChildren v
+                    |> List.foldl
+                        (\nextChild soFar ->
+                            case soFar of
+                                Nothing ->
+                                    find nextChild
+
+                                Just found ->
+                                    Just found
+                        )
+                        Nothing
+    in
+    find indexedValue
+        |> Maybe.map (mapValueAttributes identity Tuple.second)

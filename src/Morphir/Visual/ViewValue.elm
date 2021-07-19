@@ -31,6 +31,7 @@ import Morphir.Visual.ViewReference as ViewReference
 import Morphir.Visual.ViewTuple as ViewTuple
 import Morphir.Visual.VisualTypedValue exposing (VisualTypedValue, rawToVisualTypedValue, typedToVisualTypedValue)
 import Morphir.Visual.XRayView as XRayView
+import Set
 
 
 viewDefinition : Config msg -> FQName -> Value.Definition () (Type ()) -> Element msg
@@ -42,7 +43,7 @@ viewDefinition config ( _, _, valueName ) valueDef =
         definitionElem =
             definition config
                 (nameToText valueName)
-                (viewValue config (valueDef.body |> typedToVisualTypedValue))
+                (viewValue config (typedToVisualTypedValue valueDef.body))
     in
     Element.column [ mediumSpacing config.state.theme |> spacing ]
         [ definitionElem
@@ -79,7 +80,25 @@ viewDefinition config ( _, _, valueName ) valueDef =
 
 viewValue : Config msg -> VisualTypedValue -> Element msg
 viewValue config value =
-    viewValueByValueType config value
+    let
+        ( index, _ ) =
+            Value.valueAttribute value
+
+        newValue : Result String VisualTypedValue
+        newValue =
+            if Set.member index config.state.valuesToEvaluate then
+                Config.evaluate (Value.toRawValue value) config
+                    |> Result.andThen (rawToVisualTypedValue config.irContext.ir >> Result.mapError Debug.toString)
+
+            else
+                Ok value
+    in
+    newValue
+        |> Result.withDefault value
+        |> viewValueByValueType config
+        |> el
+            [ onClick (config.handlers.onClick index)
+            ]
 
 
 viewValueByValueType : Config msg -> VisualTypedValue -> Element msg

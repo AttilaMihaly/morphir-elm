@@ -1,4 +1,4 @@
-module Morphir.Web.DevelopApp.FunctionPage exposing (..)
+module Morphir.Web.DevelopApp.FunctionPage exposing (Handlers, Model, TestCaseState, compareState, compareTestCase, evaluateOutput, routeParser, viewActualOutput, viewDescription, viewExpectedOutput, viewExplanation, viewHeader, viewInputs, viewPage, viewRawValue, viewScenarios, viewTitle)
 
 import Array exposing (Array)
 import Dict exposing (Dict)
@@ -26,6 +26,7 @@ import Morphir.Visual.ValueEditor as ValueEditor
 import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.VisualTypedValue exposing (rawToVisualTypedValue)
 import Morphir.Web.DevelopApp.Common exposing (viewAsCard)
+import Set
 import Url.Parser as UrlParser exposing ((</>))
 
 
@@ -59,6 +60,7 @@ type alias Handlers msg =
     , saveTestCase : Int -> msg
     , deleteTestCase : Int -> msg
     , saveTestSuite : Model -> msg
+    , valueClicked : Int -> msg
     }
 
 
@@ -139,7 +141,8 @@ viewScenarios theme handlers distribution model =
         config : Int -> Config msg
         config index =
             { irContext =
-                { distribution = distribution
+                { ir = IR.fromDistribution distribution
+                , distribution = distribution
                 , nativeFunctions = SDK.nativeFunctions
                 }
             , state =
@@ -165,11 +168,13 @@ viewScenarios theme handlers distribution model =
                         |> Maybe.map .popupVariables
                         |> Maybe.withDefault (PopupScreenRecord 0 Nothing)
                 , theme = Theme.fromConfig Nothing
+                , valuesToEvaluate = Set.fromList [ 0 ]
                 }
             , handlers =
                 { onReferenceClicked = handlers.expandReference index
                 , onHoverOver = handlers.expandVariable index
                 , onHoverLeave = handlers.shrinkVariable index
+                , onClick = handlers.valueClicked
                 }
             }
 
