@@ -172,6 +172,22 @@ inferValueDefinition ir def =
 
                 _ =
                     Debug.log "Generated constraints" (cs |> ConstraintSet.toList |> List.length)
+
+                _ =
+                    Debug.log "Alias constraints"
+                        (cs
+                            |> ConstraintSet.toList
+                            |> List.filter
+                                (\c ->
+                                    case c of
+                                        Equality (MetaVar var1) (MetaVar var2) ->
+                                            True
+
+                                        _ ->
+                                            False
+                                )
+                            |> List.length
+                        )
             in
             cs
 
@@ -942,12 +958,40 @@ constrainLiteral thisTypeVar literalValue =
 
 
 solve : IR -> ConstraintSet -> Result TypeError ( ConstraintSet, SolutionMap )
-solve refs constraintSet =
+solve refs ((ConstraintSet _ aliases) as constraintSet) =
     solveHelp refs Solve.emptySolution constraintSet
+        |> Result.andThen
+            (\( residualConstraints, solutions ) ->
+                aliases
+                    |> Dict.toList
+                    |> List.map
+                        (\( var1, var2 ) ->
+                            case solutions |> Solve.get var2 of
+                                Just solution ->
+                                    ( var1, solution )
+
+                                Nothing ->
+                                    case solutions |> Solve.get var1 of
+                                        Just solution ->
+                                            ( var2, solution )
+
+                                        Nothing ->
+                                            ( var1, MetaVar var2 )
+                        )
+                    |> Solve.fromList
+                    |> Solve.mergeSolutions refs solutions
+                    |> Result.mapError UnifyError
+                    |> Result.map
+                        (\mergedSolutions ->
+                            ( residualConstraints
+                            , mergedSolutions
+                            )
+                        )
+            )
 
 
 solveHelp : IR -> SolutionMap -> ConstraintSet -> Result TypeError ( ConstraintSet, SolutionMap )
-solveHelp refs solutionsSoFar ((ConstraintSet constraints) as constraintSet) =
+solveHelp refs solutionsSoFar ((ConstraintSet constraints _) as constraintSet) =
     --let
     --    _ =
     --        Debug.log "constraints so far" (constraints |> List.length)
