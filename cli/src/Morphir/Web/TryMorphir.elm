@@ -1,4 +1,4 @@
-module Morphir.Web.TryMorphir exposing (..)
+module Morphir.Web.TryMorphir exposing (Flags, IRView(..), Model, Msg(..), init, main, moduleSource, packageInfo, sampleSource, subscriptions, update, view, viewDict, viewFields, viewIRViewTabs, viewModuleDefinition, viewPackageDefinition, viewPackageResult, viewValue)
 
 import Browser
 import Dict exposing (Dict)
@@ -13,6 +13,7 @@ import Morphir.Compiler as Compiler
 import Morphir.Elm.Frontend as Frontend exposing (Errors, SourceFile, SourceLocation)
 import Morphir.IR as IR exposing (IR)
 import Morphir.IR.AccessControlled exposing (AccessControlled)
+import Morphir.IR.Distribution exposing (Distribution(..))
 import Morphir.IR.Module as Module
 import Morphir.IR.Name as Name
 import Morphir.IR.Package as Package
@@ -22,6 +23,8 @@ import Morphir.IR.Value as Value
 import Morphir.IR.Value.Codec as ValueCodec
 import Morphir.Type.Infer as Infer
 import Morphir.Visual.Common exposing (nameToText)
+import Morphir.Visual.Theme as Theme
+import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.XRayView as XRayView
 import Morphir.Web.SourceEditor as SourceEditor
 import Set
@@ -54,6 +57,7 @@ type alias Model =
 type IRView
     = VisualView
     | JsonView
+    | InsightView
 
 
 init : Flags -> ( Model, Cmd Msg )
@@ -75,11 +79,15 @@ moduleSource sourceValue =
 type Msg
     = ChangeSource String
     | ChangeIRView IRView
+    | DoNothing
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        DoNothing ->
+            ( model, Cmd.none )
+
         ChangeSource sourceCode ->
             let
                 opts =
@@ -253,18 +261,20 @@ viewPackageDefinition viewAttribute packageDef irView =
     packageDef.modules
         |> Dict.toList
         |> List.map
-            (\( moduleName, moduleDef ) -> viewModuleDefinition viewAttribute moduleDef.value irView)
+            (\( moduleName, moduleDef ) -> viewModuleDefinition viewAttribute packageDef moduleDef.value irView)
         |> column []
 
 
-viewModuleDefinition : (va -> Html Msg) -> Module.Definition () (Type ()) -> IRView -> Element Msg
-viewModuleDefinition viewAttribute moduleDef irView =
+viewModuleDefinition : (va -> Html Msg) -> Package.Definition () (Type ()) -> Module.Definition () (Type ()) -> IRView -> Element Msg
+viewModuleDefinition viewAttribute packageDef moduleDef irView =
     column []
-        [ moduleDef.types
-            |> viewDict
-                (\typeName -> text (typeName |> Name.toHumanWords |> String.join " "))
-                (\typeDef -> text (Debug.toString typeDef))
-        , moduleDef.values
+        [ {- moduleDef.types
+                 |> viewDict
+                     (\typeName -> text (typeName |> Name.toHumanWords |> String.join " "))
+                     (\typeDef -> text (Debug.toString typeDef))
+             ,
+          -}
+          moduleDef.values
             |> Dict.toList
             |> List.map
                 (\( valueName, valueDef ) ->
@@ -324,15 +334,15 @@ viewModuleDefinition viewAttribute moduleDef irView =
                             , Background.color (rgb 1 1 1)
                             , width fill
                             ]
-                            (viewValue irView valueDef)
+                            (viewValue irView packageDef valueDef)
                         ]
                 )
             |> column [ spacing 20 ]
         ]
 
 
-viewValue : IRView -> AccessControlled (Value.Definition () (Type ())) -> Element Msg
-viewValue irView valueDef =
+viewValue : IRView -> Package.Definition () (Type ()) -> AccessControlled (Value.Definition () (Type ())) -> Element Msg
+viewValue irView packageDef valueDef =
     case irView of
         VisualView ->
             XRayView.viewValueDefinition
@@ -351,6 +361,32 @@ viewValue irView valueDef =
             ValueCodec.encodeValue (always Encode.null) (TypeCodec.encodeType (always Encode.null)) valueDef.value.body
                 |> Encode.encode 2
                 |> text
+
+        InsightView ->
+            ViewValue.viewDefinition
+                { irContext =
+                    { distribution =
+                        Library [ [ "test" ] ] Dict.empty packageDef
+                    , nativeFunctions = Dict.empty
+                    }
+                , state =
+                    { expandedFunctions = Dict.empty
+                    , variables = Dict.empty
+                    , popupVariables =
+                        { variableIndex = 0
+                        , variableValue = Nothing
+                        }
+                    , theme = Theme.fromConfig Nothing
+                    , highlightState = Nothing
+                    }
+                , handlers =
+                    { onReferenceClicked = \_ _ -> DoNothing
+                    , onHoverOver = \_ _ -> DoNothing
+                    , onHoverLeave = \_ -> DoNothing
+                    }
+                }
+                ( [], [], [] )
+                valueDef.value
 
 
 viewFields : List ( Element msg, Element msg ) -> Element msg
@@ -407,6 +443,7 @@ viewIRViewTabs irView =
         ]
         [ button VisualView "Visual"
         , button JsonView "JSON"
+        , button InsightView "Insight"
         ]
 
 
