@@ -1,4 +1,4 @@
-module Morphir.Web.TryMorphir exposing (Flags, IRView(..), Model, Msg(..), init, main, moduleSource, packageInfo, sampleSource, subscriptions, update, view, viewDict, viewFields, viewIRViewTabs, viewModuleDefinition, viewPackageDefinition, viewPackageResult, viewValue)
+module Morphir.Web.TryMorphir exposing (Flags, IRView(..), Model, Msg(..), init, main, moduleSource, packageInfo, sampleSource, subscriptions, update, view, viewDict, viewFields, viewIRViewTabs, viewModuleDefinition, viewPackageDefinition, viewPackageResult)
 
 import Browser
 import Dict exposing (Dict)
@@ -55,14 +55,13 @@ type alias Model =
 
 
 type IRView
-    = VisualView
-    | JsonView
+    = JsonView
     | InsightView
 
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    update (ChangeSource sampleSource) { source = "", maybePackageDef = Nothing, errors = [], irView = VisualView }
+    update (ChangeSource sampleSource) { source = "", maybePackageDef = Nothing, errors = [], irView = InsightView }
 
 
 moduleSource : String -> SourceFile
@@ -193,7 +192,7 @@ viewPackageResult sourceCode onSourceChange maybePackageDef errors irView =
             , height fill
             , scrollbars
             ]
-            [ el [ height shrink, padding 10 ] (text "Source Model")
+            [ el [ height shrink, padding 10 ] (text "Frontend")
             , el
                 [ width fill
                 , height fill
@@ -237,6 +236,42 @@ viewPackageResult sourceCode onSourceChange maybePackageDef errors irView =
             ]
             [ row [ width fill ]
                 [ el [ height shrink, padding 10 ] (text "Morphir IR")
+                ]
+            , el
+                [ width fill
+                , height fill
+                , scrollbars
+                , padding 10
+                ]
+                (case maybePackageDef of
+                    Just packageDef ->
+                        viewPackageDefinition (\_ -> Html.div [] [])
+                            packageDef
+                            (\packDef valueDef ->
+                                XRayView.viewValueDefinition
+                                    (\tpe ->
+                                        row
+                                            [ spacing 5
+                                            , Background.color (rgb 1 0.9 0.8)
+                                            ]
+                                            [ text ":"
+                                            , XRayView.viewType tpe
+                                            ]
+                                    )
+                                    valueDef
+                            )
+
+                    Nothing ->
+                        Element.none
+                )
+            ]
+        , column
+            [ width fill
+            , height fill
+            , scrollbars
+            ]
+            [ row [ width fill ]
+                [ el [ height shrink, padding 10 ] (text "Backend")
                 , viewIRViewTabs irView
                 ]
             , el
@@ -247,7 +282,41 @@ viewPackageResult sourceCode onSourceChange maybePackageDef errors irView =
                 ]
                 (case maybePackageDef of
                     Just packageDef ->
-                        viewPackageDefinition (\_ -> Html.div [] []) packageDef irView
+                        viewPackageDefinition (\_ -> Html.div [] [])
+                            packageDef
+                            (\packDef valueDef ->
+                                case irView of
+                                    JsonView ->
+                                        ValueCodec.encodeValue (always Encode.null) (TypeCodec.encodeType (always Encode.null)) valueDef.value.body
+                                            |> Encode.encode 2
+                                            |> text
+
+                                    _ ->
+                                        ViewValue.viewDefinition
+                                            { irContext =
+                                                { distribution =
+                                                    Library [ [ "test" ] ] Dict.empty packDef
+                                                , nativeFunctions = Dict.empty
+                                                }
+                                            , state =
+                                                { expandedFunctions = Dict.empty
+                                                , variables = Dict.empty
+                                                , popupVariables =
+                                                    { variableIndex = 0
+                                                    , variableValue = Nothing
+                                                    }
+                                                , theme = Theme.fromConfig Nothing
+                                                , highlightState = Nothing
+                                                }
+                                            , handlers =
+                                                { onReferenceClicked = \_ _ -> DoNothing
+                                                , onHoverOver = \_ _ -> DoNothing
+                                                , onHoverLeave = \_ -> DoNothing
+                                                }
+                                            }
+                                            ( [], [], [] )
+                                            valueDef.value
+                            )
 
                     Nothing ->
                         Element.none
@@ -256,17 +325,17 @@ viewPackageResult sourceCode onSourceChange maybePackageDef errors irView =
         ]
 
 
-viewPackageDefinition : (va -> Html Msg) -> Package.Definition () (Type ()) -> IRView -> Element Msg
-viewPackageDefinition viewAttribute packageDef irView =
+viewPackageDefinition : (va -> Html Msg) -> Package.Definition () (Type ()) -> (Package.Definition () (Type ()) -> AccessControlled (Value.Definition () (Type ())) -> Element Msg) -> Element Msg
+viewPackageDefinition viewAttribute packageDef viewValue =
     packageDef.modules
         |> Dict.toList
         |> List.map
-            (\( moduleName, moduleDef ) -> viewModuleDefinition viewAttribute packageDef moduleDef.value irView)
+            (\( moduleName, moduleDef ) -> viewModuleDefinition viewAttribute packageDef moduleDef.value viewValue)
         |> column []
 
 
-viewModuleDefinition : (va -> Html Msg) -> Package.Definition () (Type ()) -> Module.Definition () (Type ()) -> IRView -> Element Msg
-viewModuleDefinition viewAttribute packageDef moduleDef irView =
+viewModuleDefinition : (va -> Html Msg) -> Package.Definition () (Type ()) -> Module.Definition () (Type ()) -> (Package.Definition () (Type ()) -> AccessControlled (Value.Definition () (Type ())) -> Element Msg) -> Element Msg
+viewModuleDefinition viewAttribute packageDef moduleDef viewValue =
     column []
         [ {- moduleDef.types
                  |> viewDict
@@ -334,59 +403,49 @@ viewModuleDefinition viewAttribute packageDef moduleDef irView =
                             , Background.color (rgb 1 1 1)
                             , width fill
                             ]
-                            (viewValue irView packageDef valueDef)
+                            (viewValue packageDef valueDef)
                         ]
                 )
             |> column [ spacing 20 ]
         ]
 
 
-viewValue : IRView -> Package.Definition () (Type ()) -> AccessControlled (Value.Definition () (Type ())) -> Element Msg
-viewValue irView packageDef valueDef =
-    case irView of
-        VisualView ->
-            XRayView.viewValueDefinition
-                (\tpe ->
-                    row
-                        [ spacing 5
-                        , Background.color (rgb 1 0.9 0.8)
-                        ]
-                        [ text ":"
-                        , XRayView.viewType tpe
-                        ]
-                )
-                valueDef
 
-        JsonView ->
-            ValueCodec.encodeValue (always Encode.null) (TypeCodec.encodeType (always Encode.null)) valueDef.value.body
-                |> Encode.encode 2
-                |> text
-
-        InsightView ->
-            ViewValue.viewDefinition
-                { irContext =
-                    { distribution =
-                        Library [ [ "test" ] ] Dict.empty packageDef
-                    , nativeFunctions = Dict.empty
-                    }
-                , state =
-                    { expandedFunctions = Dict.empty
-                    , variables = Dict.empty
-                    , popupVariables =
-                        { variableIndex = 0
-                        , variableValue = Nothing
-                        }
-                    , theme = Theme.fromConfig Nothing
-                    , highlightState = Nothing
-                    }
-                , handlers =
-                    { onReferenceClicked = \_ _ -> DoNothing
-                    , onHoverOver = \_ _ -> DoNothing
-                    , onHoverLeave = \_ -> DoNothing
-                    }
-                }
-                ( [], [], [] )
-                valueDef.value
+--viewValue : IRView -> Package.Definition () (Type ()) -> AccessControlled (Value.Definition () (Type ())) -> Element Msg
+--viewValue irView packageDef valueDef =
+--    case irView of
+--        VisualView ->
+--
+--        JsonView ->
+--            ValueCodec.encodeValue (always Encode.null) (TypeCodec.encodeType (always Encode.null)) valueDef.value.body
+--                |> Encode.encode 2
+--                |> text
+--
+--        InsightView ->
+--            ViewValue.viewDefinition
+--                { irContext =
+--                    { distribution =
+--                        Library [ [ "test" ] ] Dict.empty packageDef
+--                    , nativeFunctions = Dict.empty
+--                    }
+--                , state =
+--                    { expandedFunctions = Dict.empty
+--                    , variables = Dict.empty
+--                    , popupVariables =
+--                        { variableIndex = 0
+--                        , variableValue = Nothing
+--                        }
+--                    , theme = Theme.fromConfig Nothing
+--                    , highlightState = Nothing
+--                    }
+--                , handlers =
+--                    { onReferenceClicked = \_ _ -> DoNothing
+--                    , onHoverOver = \_ _ -> DoNothing
+--                    , onHoverLeave = \_ -> DoNothing
+--                    }
+--                }
+--                ( [], [], [] )
+--                valueDef.value
 
 
 viewFields : List ( Element msg, Element msg ) -> Element msg
@@ -441,8 +500,7 @@ viewIRViewTabs irView =
         , paddingXY 10 0
         , spacing 10
         ]
-        [ button VisualView "Visual"
-        , button JsonView "JSON"
+        [ button JsonView "JSON"
         , button InsightView "Insight"
         ]
 
