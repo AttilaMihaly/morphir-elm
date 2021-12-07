@@ -1,0 +1,11 @@
+
+- Only exposed modules and their dependencies should be processed and included in the IR
+  - Start with exposed modules
+  - Build dependency graph using either:
+    - the IR if it exists, the module is available in it, and it hasn't changed since last build
+    - imports in the module after parsing
+  - When a module is not available:
+    - Find which package it belongs to (find out where to split the Elm module name into Morphir package and module name)
+    - 
+- Only modules where the source changed since the last IR build should be processed
+- All dependents of changed modules should be validated: resolved, type checked, property checked and tested
