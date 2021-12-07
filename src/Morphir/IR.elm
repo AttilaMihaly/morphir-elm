@@ -17,9 +17,11 @@
 
 module Morphir.IR exposing
     ( IR
-    , fromPackageSpecifications, fromDistribution
+    , insertValueDefinition, insertTypeDefinition, insertModuleDefinition
+    , insertValueSpecification, insertTypeSpecification, insertModuleSpecification
+    , fromPackageSpecifications, fromDistribution, toDistribution
     , lookupTypeSpecification, lookupTypeConstructor, lookupValueSpecification, lookupValueDefinition
-    , empty, resolveAliases, resolveType, resolveRecordConstructors
+    , empty, union, resolveAliases, resolveType, resolveRecordConstructors, moduleSpecifications
     )
 
 {-| This module contains data structures and functions to make working with the IR easier and more efficient.
@@ -27,9 +29,15 @@ module Morphir.IR exposing
 @docs IR
 
 
+# Write Operations
+
+@docs insertValueDefinition, insertTypeDefinition, insertModuleDefinition
+@docs insertValueSpecification, insertTypeSpecification, insertModuleSpecification
+
+
 # Conversions
 
-@docs fromPackageSpecifications, fromDistribution
+@docs fromPackageSpecifications, fromDistribution, toDistribution
 
 
 # Lookups
@@ -39,17 +47,21 @@ module Morphir.IR exposing
 
 # Utilities
 
-@docs empty, resolveAliases, resolveType, resolveRecordConstructors
+@docs empty, union, resolveAliases, resolveType, resolveRecordConstructors, moduleSpecifications
 
 -}
 
 import Dict exposing (Dict)
-import Morphir.IR.Distribution as Distribution exposing (Distribution)
+import Morphir.IR.AccessControlled exposing (AccessControlled, private, public)
+import Morphir.IR.Distribution as Distribution exposing (Distribution(..))
+import Morphir.IR.Documented exposing (Documented)
 import Morphir.IR.FQName exposing (FQName)
+import Morphir.IR.Module as Module exposing (ModuleName)
 import Morphir.IR.Name exposing (Name)
 import Morphir.IR.Package as Package exposing (PackageName)
 import Morphir.IR.Type as Type exposing (Type)
 import Morphir.IR.Value as Value exposing (Value)
+import Set exposing (Set)
 
 
 {-| Data structure to store types and values efficiently.
@@ -71,6 +83,149 @@ empty =
     , typeSpecifications = Dict.empty
     , typeConstructors = Dict.empty
     }
+
+
+{-| Combine two IRs to include all the definitions from both. In case of clashes the definition in the first IR will be
+retained.
+-}
+union : IR -> IR -> IR
+union ir1 ir2 =
+    { valueSpecifications =
+        Dict.union
+            ir1.valueSpecifications
+            ir2.valueSpecifications
+    , valueDefinitions =
+        Dict.union
+            ir1.valueDefinitions
+            ir2.valueDefinitions
+    , typeSpecifications =
+        Dict.union
+            ir1.typeSpecifications
+            ir2.typeSpecifications
+    , typeConstructors =
+        Dict.union
+            ir1.typeConstructors
+            ir2.typeConstructors
+    }
+
+
+{-| Insert a type definition into the IR.
+-}
+insertTypeSpecification : FQName -> Type.Specification () -> IR -> IR
+insertTypeSpecification (( packageName, moduleName, typeName ) as fQName) typeSpec ir =
+    { ir
+        | typeSpecifications =
+            ir.typeSpecifications
+                |> Dict.insert (fQName |> Debug.log "insert type") typeSpec
+    }
+
+
+{-| Insert a type definition into the IR.
+-}
+insertTypeDefinition : FQName -> Type.Definition () -> IR -> IR
+insertTypeDefinition (( packageName, moduleName, typeName ) as fQName) typeDef ir =
+    { ir
+        | typeSpecifications =
+            ir.typeSpecifications
+                |> Dict.insert (fQName |> Debug.log "insert type") (Type.definitionToSpecification typeDef)
+        , typeConstructors =
+            case typeDef of
+                Type.CustomTypeDefinition params constructors ->
+                    constructors.value
+                        |> Dict.toList
+                        |> List.foldl
+                            (\( ctorName, ctorArgs ) typeConstructorsSoFar ->
+                                typeConstructorsSoFar
+                                    |> Dict.insert ( packageName, moduleName, ctorName )
+                                        ( fQName, params, ctorArgs )
+                            )
+                            ir.typeConstructors
+
+                _ ->
+                    ir.typeConstructors
+    }
+
+
+{-| Insert a value specification into the IR.
+-}
+insertValueSpecification : FQName -> Value.Specification () -> IR -> IR
+insertValueSpecification fQName valueSpec ir =
+    { ir
+        | valueSpecifications =
+            ir.valueSpecifications
+                |> Dict.insert (fQName |> Debug.log "insert value") valueSpec
+    }
+
+
+{-| Insert a value definition into the IR.
+-}
+insertValueDefinition : FQName -> Value.Definition () (Type ()) -> IR -> IR
+insertValueDefinition fQName valueDef ir =
+    { ir
+        | valueDefinitions =
+            ir.valueDefinitions
+                |> Dict.insert (fQName |> Debug.log "insert value") valueDef
+    }
+
+
+{-| Insert a module specification into the IR.
+-}
+insertModuleSpecification : PackageName -> ModuleName -> Module.Specification () -> IR -> IR
+insertModuleSpecification packageName moduleName moduleSpec =
+    let
+        insertTypes : IR -> IR
+        insertTypes ir =
+            moduleSpec.types
+                |> Dict.toList
+                |> List.foldl
+                    (\( typeName, typeSpec ) irSoFar ->
+                        irSoFar
+                            |> insertTypeSpecification ( packageName, moduleName, typeName ) typeSpec.value
+                    )
+                    ir
+
+        insertValues : IR -> IR
+        insertValues ir =
+            moduleSpec.values
+                |> Dict.toList
+                |> List.foldl
+                    (\( valueName, valueSpec ) irSoFar ->
+                        irSoFar
+                            |> insertValueSpecification ( packageName, moduleName, valueName ) valueSpec
+                    )
+                    ir
+    in
+    insertTypes >> insertValues
+
+
+{-| Insert a module definition into the IR.
+-}
+insertModuleDefinition : PackageName -> ModuleName -> Module.Definition () (Type ()) -> IR -> IR
+insertModuleDefinition packageName moduleName moduleDef =
+    let
+        insertTypes : IR -> IR
+        insertTypes ir =
+            moduleDef.types
+                |> Dict.toList
+                |> List.foldl
+                    (\( typeName, typeDef ) irSoFar ->
+                        irSoFar
+                            |> insertTypeDefinition ( packageName, moduleName, typeName ) typeDef.value.value
+                    )
+                    ir
+
+        insertValues : IR -> IR
+        insertValues ir =
+            moduleDef.values
+                |> Dict.toList
+                |> List.foldl
+                    (\( valueName, valueDef ) irSoFar ->
+                        irSoFar
+                            |> insertValueDefinition ( packageName, moduleName, valueName ) valueDef.value
+                    )
+                    ir
+    in
+    insertTypes >> insertValues
 
 
 {-| Turn a `Distribution` into an `IR`. The `Distribution` data type is optimized for transfer while the `IR` data type
@@ -106,6 +261,87 @@ fromDistribution (Distribution.Library libraryName dependencies packageDef) =
     { specificationsOnly
         | valueDefinitions = packageValueDefinitions
     }
+
+
+{-| Extracts a distribution from th IR. Since the IR contains multiple packages, the package name to be extracted needs
+to be specified.
+-}
+toDistribution : PackageName -> IR -> Distribution
+toDistribution packageName ir =
+    let
+        moduleDefs : Dict ModuleName (AccessControlled (Module.Definition () (Type ())))
+        moduleDefs =
+            moduleNames packageName ir
+                |> List.map
+                    (\moduleName ->
+                        let
+                            types : Dict Name (AccessControlled (Documented (Type.Definition ())))
+                            types =
+                                ir.typeSpecifications
+                                    |> Dict.toList
+                                    |> List.filterMap
+                                        (\( ( p, m, typeName ), typeSpec ) ->
+                                            let
+                                                typeDef : Type.Definition ()
+                                                typeDef =
+                                                    case typeSpec of
+                                                        Type.TypeAliasSpecification params typeExp ->
+                                                            Type.TypeAliasDefinition params typeExp
+
+                                                        Type.OpaqueTypeSpecification params ->
+                                                            let
+                                                                constructors : Dict Name (List ( Name, Type () ))
+                                                                constructors =
+                                                                    ir.typeConstructors
+                                                                        |> Dict.toList
+                                                                        |> List.filterMap
+                                                                            (\( ( cp, cm, cn ), ( ( _, _, tn ), _, args ) ) ->
+                                                                                if cp == packageName && cm == moduleName && tn == typeName then
+                                                                                    Just ( cn, args )
+
+                                                                                else
+                                                                                    Nothing
+                                                                            )
+                                                                        |> Dict.fromList
+                                                            in
+                                                            Type.CustomTypeDefinition params (private constructors)
+
+                                                        Type.CustomTypeSpecification params constructors ->
+                                                            Type.CustomTypeDefinition params (public constructors)
+                                            in
+                                            if p == packageName && m == moduleName then
+                                                Just ( typeName, public { doc = "", value = typeDef } )
+
+                                            else
+                                                Nothing
+                                        )
+                                    |> Dict.fromList
+
+                            values : Dict Name (AccessControlled (Value.Definition () (Type ())))
+                            values =
+                                ir.valueDefinitions
+                                    |> Dict.toList
+                                    |> List.filterMap
+                                        (\( ( p, m, valueName ), valueDef ) ->
+                                            if p == packageName && m == moduleName then
+                                                Just ( valueName, public valueDef )
+
+                                            else
+                                                Nothing
+                                        )
+                                    |> Dict.fromList
+                        in
+                        ( moduleName
+                        , public (Module.Definition types values)
+                        )
+                    )
+                |> Dict.fromList
+
+        packageDef : Package.Definition () (Type ())
+        packageDef =
+            Package.Definition moduleDefs
+    in
+    Library packageName Dict.empty packageDef
 
 
 {-| Turn a dictionary of package specifications into an `IR`.
@@ -317,3 +553,83 @@ resolveRecordConstructors value ir =
                     _ ->
                         Nothing
             )
+
+
+{-| Get all the module specifications for a specific package.
+-}
+moduleSpecifications : PackageName -> IR -> Dict ModuleName (Module.Specification ())
+moduleSpecifications packageName ir =
+    moduleNames packageName ir
+        |> List.map
+            (\moduleName ->
+                let
+                    types : Dict Name (Documented (Type.Specification ()))
+                    types =
+                        ir.typeSpecifications
+                            |> Dict.toList
+                            |> List.filterMap
+                                (\( ( p, m, typeName ), typeSpec ) ->
+                                    if p == packageName && m == moduleName then
+                                        Just ( typeName, Documented "" typeSpec )
+
+                                    else
+                                        Nothing
+                                )
+                            |> Dict.fromList
+
+                    values : Dict Name (Value.Specification ())
+                    values =
+                        ir.valueSpecifications
+                            |> Dict.toList
+                            |> List.filterMap
+                                (\( ( p, m, valueName ), valueSpec ) ->
+                                    if p == packageName && m == moduleName then
+                                        Just ( valueName, valueSpec )
+
+                                    else
+                                        Nothing
+                                )
+                            |> Dict.fromList
+                in
+                ( moduleName, Module.Specification types values )
+            )
+        |> Dict.fromList
+
+
+moduleNames : PackageName -> IR -> List ModuleName
+moduleNames packageName ir =
+    List.concat
+        [ ir.typeSpecifications
+            |> Dict.keys
+            |> List.filterMap
+                (\( p, m, _ ) ->
+                    if p == packageName then
+                        Just m
+
+                    else
+                        Nothing
+                )
+        , ir.typeConstructors
+            |> Dict.values
+            |> List.filterMap
+                (\( ( p, m, _ ), _, _ ) ->
+                    if p == packageName then
+                        Just m
+
+                    else
+                        Nothing
+                )
+        , ir.valueDefinitions
+            |> Dict.keys
+            |> List.filterMap
+                (\( p, m, _ ) ->
+                    if p == packageName then
+                        Just m
+
+                    else
+                        Nothing
+                )
+        ]
+        -- distinct
+        |> Set.fromList
+        |> Set.toList

@@ -4,7 +4,7 @@ import Dict exposing (Dict)
 import Elm.Parser
 import Graph exposing (Graph)
 import Morphir.Compiler as Compiler
-import Morphir.Elm.ModuleName exposing (ModuleName)
+import Morphir.Elm.ElmModuleName exposing (ElmModuleName)
 import Morphir.Elm.ParsedModule as ParsedModule exposing (ParsedModule)
 import Morphir.ListOfResults as ListOfResults
 import Parser exposing (DeadEnd)
@@ -16,13 +16,13 @@ type alias SourceFiles =
 
 
 type ParseResult
-    = MissingModules (List ModuleName) (List ParsedModule)
+    = MissingModules (List ElmModuleName) (List ParsedModule)
     | OrderedModules (List ParsedModule)
 
 
 type ParseAndOrderError
     = ParseErrors (Dict String (List ParseError))
-    | ModuleDependencyCycles (List (List ModuleName))
+    | ModuleDependencyCycles (List (List ElmModuleName))
 
 
 type alias ParseError =
@@ -31,7 +31,7 @@ type alias ParseError =
     }
 
 
-parseAndOrderModules : SourceFiles -> (ModuleName -> Bool) -> List ParsedModule -> Result ParseAndOrderError ParseResult
+parseAndOrderModules : SourceFiles -> (ElmModuleName -> Bool) -> List ParsedModule -> Result ParseAndOrderError ParseResult
 parseAndOrderModules sourceFiles isExternalModule previouslyParsedModules =
     let
         parseSources : SourceFiles -> Result ParseAndOrderError (List ParsedModule)
@@ -41,6 +41,7 @@ parseAndOrderModules sourceFiles isExternalModule previouslyParsedModules =
                 |> List.map
                     (\( filePath, source ) ->
                         Elm.Parser.parse source
+                            |> Result.map ParsedModule.fromRawFile
                             |> Result.mapError
                                 (\deadEnds ->
                                     ( filePath, deadEnds |> parserDeadEndToParseError )
@@ -66,24 +67,24 @@ parseAndOrderModules sourceFiles isExternalModule previouslyParsedModules =
                 |> Dict.toList
                 |> List.map Tuple.second
 
-        importedModuleNames : List ParsedModule -> Set ModuleName
+        importedModuleNames : List ParsedModule -> Set ElmModuleName
         importedModuleNames parsedModules =
             parsedModules
                 |> List.concatMap ParsedModule.importedModules
                 |> List.filter (isExternalModule >> not)
                 |> Set.fromList
 
-        parsedModuleNames : List ParsedModule -> Set ModuleName
+        parsedModuleNames : List ParsedModule -> Set ElmModuleName
         parsedModuleNames parsedModules =
             parsedModules
                 ++ previouslyParsedModules
                 |> List.map ParsedModule.moduleName
                 |> Set.fromList
 
-        parsedModulesToGraph : List ParsedModule -> Graph ModuleName ()
+        parsedModulesToGraph : List ParsedModule -> Graph ElmModuleName ()
         parsedModulesToGraph parsedModules =
             let
-                moduleNameToIndex : Dict ModuleName Int
+                moduleNameToIndex : Dict ElmModuleName Int
                 moduleNameToIndex =
                     parsedModules
                         |> List.indexedMap
@@ -110,13 +111,13 @@ parseAndOrderModules sourceFiles isExternalModule previouslyParsedModules =
         orderParsedModules : List ParsedModule -> Result ParseAndOrderError ParseResult
         orderParsedModules parsedModules =
             let
-                parsedModulesByName : Dict ModuleName ParsedModule
+                parsedModulesByName : Dict ElmModuleName ParsedModule
                 parsedModulesByName =
                     parsedModules
                         |> List.map (\parsedModule -> ( ParsedModule.moduleName parsedModule, parsedModule ))
                         |> Dict.fromList
 
-                missingModuleNames : Set ModuleName
+                missingModuleNames : Set ElmModuleName
                 missingModuleNames =
                     Set.diff (importedModuleNames parsedModules) (parsedModuleNames parsedModules)
             in

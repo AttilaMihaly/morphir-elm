@@ -121,7 +121,7 @@ toString metaType =
                 prefix =
                     case extends of
                         Just var ->
-                            "var_" ++ (toName var |> Name.toSnakeCase)
+                            "var_" ++ (toName var |> Name.toSnakeCase) ++ " | "
 
                         Nothing ->
                             ""

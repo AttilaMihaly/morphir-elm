@@ -20,8 +20,8 @@ port module Morphir.Elm.FrontendWorker exposing (main)
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Morphir.Elm.ElmModuleName exposing (ElmModuleName)
 import Morphir.Elm.Frontend2 exposing (ParseAndOrderError(..), ParseError, ParseResult(..), SourceFiles, parseAndOrderModules)
-import Morphir.Elm.ModuleName exposing (ModuleName)
 import Morphir.Elm.ParsedModule as ParsedModule exposing (ParsedModule)
 
 
@@ -118,7 +118,7 @@ decodeSourceFiles =
     Decode.dict Decode.string
 
 
-encodeMissingModules : List ModuleName -> Encode.Value
+encodeMissingModules : List ElmModuleName -> Encode.Value
 encodeMissingModules moduleNames =
     moduleNames
         |> List.map (String.join ".")
@@ -144,7 +144,7 @@ encodeParseErrors parseErrors =
         parseErrors
 
 
-encodeCycles : List (List ModuleName) -> Encode.Value
+encodeCycles : List (List ElmModuleName) -> Encode.Value
 encodeCycles cycles =
     cycles
         |> List.map (List.map (String.join "."))

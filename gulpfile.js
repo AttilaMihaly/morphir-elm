@@ -56,6 +56,10 @@ function makeCLI() {
     return make('cli', 'src/Morphir/Elm/CLI.elm', 'Morphir.Elm.CLI.js')
 }
 
+function makeIncrementalFrontendWorker() {
+    return make('cli', 'src/Morphir/Elm/IncrementalFrontendWorker.elm', 'Morphir.Elm.IncrementalFrontendWorker.js')
+}
+
 function makeDevCLI() {
     return make('cli', 'src/Morphir/Elm/DevCLI.elm', 'Morphir.Elm.DevCLI.js')
 }
@@ -81,6 +85,7 @@ const build =
     series(
         checkElmDocs,
         makeCLI,
+        makeIncrementalFrontendWorker,
         makeDevCLI,
         makeDevServer,
         makeDevServerAPI,
@@ -221,6 +226,7 @@ const test =
 
 exports.clean = clean;
 exports.makeCLI = makeCLI;
+exports.makeIncrementalFrontendWorker = makeIncrementalFrontendWorker;
 exports.makeDevCLI = makeDevCLI;
 exports.build = build;
 exports.test = test;

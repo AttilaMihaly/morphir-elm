@@ -75,6 +75,10 @@ inferModuleDefinition refs moduleName moduleDef =
                     |> Result.map (Tuple.pair valueName)
                     |> Result.mapError
                         (\typeError ->
+                            let
+                                _ =
+                                    Debug.log "valueDef" valueDef
+                            in
                             Compiler.ErrorInSourceFile
                                 (String.concat [ "Type error in value '", Name.toCamelCase valueName, "': ", typeErrorToMessage typeError ])
                                 []
