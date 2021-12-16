@@ -124,6 +124,7 @@ import Morphir.IR.Name as Name exposing (Name)
 import Morphir.IR.Path as Path
 import Morphir.IR.Type as Type exposing (Type)
 import Morphir.ListOfResults as ListOfResults
+import Morphir.TreePath as TreePath exposing (TreePath)
 import Set exposing (Set)
 
 
@@ -1094,6 +1095,50 @@ indexedMapListHelp f baseIndex elemList =
                 ( List.append elemsSoFar [ mappedElem ], lastIndex )
             )
             ( [], baseIndex )
+
+
+pathMapPattern : (TreePath -> a -> b) -> TreePath -> Pattern a -> Pattern b
+pathMapPattern f path pattern =
+    case pattern of
+        WildcardPattern a ->
+            WildcardPattern (f path a)
+
+        AsPattern a subPattern name ->
+            AsPattern (f path a) (pathMapPattern f (path |> TreePath.descend 0) subPattern) name
+
+        TuplePattern a patterns ->
+            TuplePattern (f path a)
+                (patterns
+                    |> List.indexedMap
+                        (\index ->
+                            pathMapPattern f
+                                (path |> TreePath.descend index)
+                        )
+                )
+
+        ConstructorPattern a fQName patterns ->
+            ConstructorPattern (f path a)
+                fQName
+                (patterns
+                    |> List.indexedMap
+                        (\index ->
+                            pathMapPattern f (path |> TreePath.descend index)
+                        )
+                )
+
+        EmptyListPattern a ->
+            EmptyListPattern (f path a)
+
+        HeadTailPattern a headPattern tailPattern ->
+            HeadTailPattern (f path a)
+                (pathMapPattern f (path |> TreePath.descend 0) headPattern)
+                (pathMapPattern f (path |> TreePath.descend 1) tailPattern)
+
+        LiteralPattern a l ->
+            LiteralPattern (f path a) l
+
+        UnitPattern a ->
+            UnitPattern (f path a)
 
 
 {-| Recursively rewrite a value using the supplied mapping function.
