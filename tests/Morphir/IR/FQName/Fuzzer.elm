@@ -22,13 +22,13 @@ module Morphir.IR.FQName.Fuzzer exposing (..)
 
 import Fuzz exposing (Fuzzer)
 import Morphir.IR.FQName exposing (FQName, fQName)
-import Morphir.IR.Name.Fuzzer exposing (fuzzName)
-import Morphir.IR.Path.Fuzzer exposing (fuzzPath)
+import Morphir.IR.Name.Fuzzer exposing (nameFuzzer)
+import Morphir.IR.Path.Fuzzer exposing (pathFuzzer)
 
 
 fuzzFQName : Fuzzer FQName
 fuzzFQName =
     Fuzz.map3 fQName
-        fuzzPath
-        fuzzPath
-        fuzzName
+        pathFuzzer
+        pathFuzzer
+        nameFuzzer
