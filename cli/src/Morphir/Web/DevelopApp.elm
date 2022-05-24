@@ -55,6 +55,7 @@ import Morphir.Correctness.Codec exposing (decodeTestSuite, encodeTestSuite)
 import Morphir.Correctness.Test exposing (TestCase, TestSuite)
 import Morphir.Elm.Backend.Dapr.StatefulApp exposing (test)
 import Morphir.IR as IR exposing (IR)
+import Morphir.IR.Attribute exposing (NodePath(..))
 import Morphir.IR.Distribution as Distribution exposing (Distribution(..))
 import Morphir.IR.Distribution.Codec as DistributionCodec
 import Morphir.IR.FQName exposing (FQName)
@@ -77,6 +78,7 @@ import Morphir.Visual.Config exposing (PopupScreenRecord)
 import Morphir.Visual.EnrichedValue exposing (fromRawValue)
 import Morphir.Visual.Theme as Theme exposing (Theme)
 import Morphir.Visual.ValueEditor as ValueEditor
+import Morphir.Visual.ViewType as ViewType exposing (ExpandedNodes(..))
 import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.XRayView as XRayView
 import Morphir.Web.DevelopApp.Common as Common exposing (ifThenElse, pathToDisplayString, pathToFullUrl, pathToUrl, urlFragmentToNodePath, viewAsCard)
@@ -126,6 +128,7 @@ type alias Model =
     , argState : InsightArgumentState
     , expandedValues : Dict ( FQName, Name ) (Value.Definition () (Type ()))
     }
+
 
 type alias InsightArgumentState =
     Dict FQName (Dict Name ValueEditor.EditorState)
@@ -1271,126 +1274,131 @@ viewHome model packageName packageDef =
 -}
 viewType : Theme -> Name -> Type.Definition () -> String -> Element msg
 viewType theme typeName typeDef docs =
-    case typeDef of
-        Type.TypeAliasDefinition _ (Type.Record _ fields) ->
-            let
-                fieldNames : { a | name : Name } -> Element msg
-                fieldNames =
-                    \field ->
-                        el
-                            (Theme.boldLabelStyles theme)
-                            (text (nameToText field.name))
-
-                fieldTypes : { a | tpe : Type () } -> Element msg
-                fieldTypes =
-                    \field ->
-                        el
-                            (Theme.labelStyles theme)
-                            (XRayView.viewType pathToUrl field.tpe)
-
-                viewFields : Element msg
-                viewFields =
-                    Theme.twoColumnTableView
-                        fields
-                        fieldNames
-                        fieldTypes
-            in
-            viewAsCard theme
-                (typeName |> nameToTitleText |> text)
-                "record"
-                theme.colors.backgroundColor
-                docs
-                viewFields
-
-        Type.TypeAliasDefinition _ body ->
-            viewAsCard theme
-                (typeName |> nameToTitleText |> text)
-                "is a"
-                theme.colors.backgroundColor
-                docs
-                (el
-                    [ paddingXY 10 5
-                    ]
-                    (XRayView.viewType pathToUrl body)
-                )
-
-        Type.CustomTypeDefinition _ accessControlledConstructors ->
-            let
-                isNewType : Maybe (Type ())
-                isNewType =
-                    case accessControlledConstructors.value |> Dict.toList of
-                        [ ( ctorName, [ ( _, baseType ) ] ) ] ->
-                            if ctorName == typeName then
-                                Just baseType
-
-                            else
-                                Nothing
-
-                        _ ->
-                            Nothing
-
-                isEnum : Bool
-                isEnum =
-                    accessControlledConstructors.value
-                        |> Dict.values
-                        |> List.all List.isEmpty
-
-                viewConstructors : Element msg
-                viewConstructors =
-                    if isEnum then
-                        accessControlledConstructors.value
-                            |> Dict.toList
-                            |> List.map
-                                (\( ctorName, _ ) ->
-                                    el
-                                        (Theme.boldLabelStyles theme)
-                                        (text (nameToTitleText ctorName))
-                                )
-                            |> column [ width fill ]
-
-                    else
-                        case isNewType of
-                            Just baseType ->
-                                el [ padding (theme |> Theme.scaled -2) ] (XRayView.viewType pathToUrl baseType)
-
-                            Nothing ->
-                                let
-                                    constructorNames =
-                                        \( ctorName, _ ) ->
-                                            el
-                                                (Theme.boldLabelStyles theme)
-                                                (text (nameToTitleText ctorName))
-
-                                    constructorArgs =
-                                        \( _, ctorArgs ) ->
-                                            el
-                                                (Theme.labelStyles theme)
-                                                (ctorArgs
-                                                    |> List.map (Tuple.second >> XRayView.viewType pathToUrl)
-                                                    |> row [ spacing 5 ]
-                                                )
-                                in
-                                Theme.twoColumnTableView
-                                    (Dict.toList accessControlledConstructors.value)
-                                    constructorNames
-                                    constructorArgs
-            in
-            viewAsCard theme
-                (typeName |> nameToTitleText |> text)
-                (case isNewType of
-                    Just _ ->
-                        "wrapper"
-
-                    Nothing ->
-                        if isEnum then
-                            "enum"
-
-                        else
-                            "one of"
-                )
-                Theme.defaultColors.backgroundColor
-                docs
-                viewConstructors
+    --case typeDef of
+    --    Type.TypeAliasDefinition _ (Type.Record _ fields) ->
+    --        let
+    --            fieldNames : { a | name : Name } -> Element msg
+    --            fieldNames =
+    --                \field ->
+    --                    el
+    --                        (Theme.boldLabelStyles theme)
+    --                        (text (nameToText field.name))
+    --
+    --            fieldTypes : { a | tpe : Type () } -> Element msg
+    --            fieldTypes =
+    --                \field ->
+    --                    el
+    --                        (Theme.labelStyles theme)
+    --                        (XRayView.viewType pathToUrl field.tpe)
+    --
+    --            viewFields : Element msg
+    --            viewFields =
+    --                Theme.twoColumnTableView
+    --                    fields
+    --                    fieldNames
+    --                    fieldTypes
+    --        in
+    --        viewAsCard theme
+    --            (typeName |> nameToTitleText |> text)
+    --            "record"
+    --            theme.colors.backgroundColor
+    --            docs
+    --            viewFields
+    --
+    --    Type.TypeAliasDefinition _ body ->
+    --        viewAsCard theme
+    --            (typeName |> nameToTitleText |> text)
+    --            "is a"
+    --            theme.colors.backgroundColor
+    --            docs
+    --            (el
+    --                [ paddingXY 10 5
+    --                ]
+    --                (XRayView.viewType pathToUrl body)
+    --            )
+    --
+    --    Type.CustomTypeDefinition _ accessControlledConstructors ->
+    --        let
+    --            isNewType : Maybe (Type ())
+    --            isNewType =
+    --                case accessControlledConstructors.value |> Dict.toList of
+    --                    [ ( ctorName, [ ( _, baseType ) ] ) ] ->
+    --                        if ctorName == typeName then
+    --                            Just baseType
+    --
+    --                        else
+    --                            Nothing
+    --
+    --                    _ ->
+    --                        Nothing
+    --
+    --            isEnum : Bool
+    --            isEnum =
+    --                accessControlledConstructors.value
+    --                    |> Dict.values
+    --                    |> List.all List.isEmpty
+    --
+    --            viewConstructors : Element msg
+    --            viewConstructors =
+    --                if isEnum then
+    --                    accessControlledConstructors.value
+    --                        |> Dict.toList
+    --                        |> List.map
+    --                            (\( ctorName, _ ) ->
+    --                                el
+    --                                    (Theme.boldLabelStyles theme)
+    --                                    (text (nameToTitleText ctorName))
+    --                            )
+    --                        |> column [ width fill ]
+    --
+    --                else
+    --                    case isNewType of
+    --                        Just baseType ->
+    --                            el [ padding (theme |> Theme.scaled -2) ] (XRayView.viewType pathToUrl baseType)
+    --
+    --                        Nothing ->
+    --                            let
+    --                                constructorNames =
+    --                                    \( ctorName, _ ) ->
+    --                                        el
+    --                                            (Theme.boldLabelStyles theme)
+    --                                            (text (nameToTitleText ctorName))
+    --
+    --                                constructorArgs =
+    --                                    \( _, ctorArgs ) ->
+    --                                        el
+    --                                            (Theme.labelStyles theme)
+    --                                            (ctorArgs
+    --                                                |> List.map (Tuple.second >> XRayView.viewType pathToUrl)
+    --                                                |> row [ spacing 5 ]
+    --                                            )
+    --                            in
+    --                            Theme.twoColumnTableView
+    --                                (Dict.toList accessControlledConstructors.value)
+    --                                constructorNames
+    --                                constructorArgs
+    --        in
+    --        viewAsCard theme
+    --            (typeName |> nameToTitleText |> text)
+    --            (case isNewType of
+    --                Just _ ->
+    --                    "wrapper"
+    --
+    --                Nothing ->
+    --                    if isEnum then
+    --                        "enum"
+    --
+    --                    else
+    --                        "one of"
+    --            )
+    --            Theme.defaultColors.backgroundColor
+    --            docs
+    --            viewConstructors
+    ViewType.view
+        { lookupTypeDefinition = \fqn -> Nothing
+        , expandedNodes = ExpandedChildrenByName Dict.empty
+        }
+        typeDef
 
 
 {-| Display detailed information of a Value on the UI
@@ -1704,8 +1712,6 @@ viewDefinitionDetails model =
                 , onHoverLeave = Insight << ShrinkVariable
                 }
 
-
-
         viewArgumentEditors : IR -> InsightArgumentState -> FQName -> Value.Definition () (Type ()) -> Element Msg
         viewArgumentEditors ir argState fQName valueDef =
             valueDef.inputTypes
@@ -1793,9 +1799,8 @@ viewDefinitionDetails model =
 
                 diplayTestcase : TestCase -> Element Msg
                 diplayTestcase testCase =
-                    row [ Background.color <| evaluate testCase ] (
-                        [text " description: ",  text testCase.description, text ", inputs:" ] ++ List.map (\t -> displayValue t) testCase.inputs ++ [ text ", expected output:", displayValue testCase.expectedOutput ]
-                    )
+                    row [ Background.color <| evaluate testCase ]
+                        ([ text " description: ", text testCase.description, text ", inputs:" ] ++ List.map (\t -> displayValue t) testCase.inputs ++ [ text ", expected output:", displayValue testCase.expectedOutput ])
             in
             column [] (List.map (\t -> diplayTestcase t) listOfTestcases)
     in
@@ -1849,8 +1854,8 @@ viewDefinitionDetails model =
                                                                                 Just <|
                                                                                     column
                                                                                         [ width fill, height fill, spacing 20 ]
-                                                                                        [viewArgumentEditors (IR.fromDistribution distribution) model.argState fullyQualifiedName accessControlledValueDef.value.value
-                                                                                        ,(ViewValue.viewDefinition (insightViewConfig distribution) fullyQualifiedName accessControlledValueDef.value.value)
+                                                                                        [ viewArgumentEditors (IR.fromDistribution distribution) model.argState fullyQualifiedName accessControlledValueDef.value.value
+                                                                                        , ViewValue.viewDefinition (insightViewConfig distribution) fullyQualifiedName accessControlledValueDef.value.value
                                                                                         , viewActualOutput
                                                                                             model.theme
                                                                                             (insightViewConfig distribution)
