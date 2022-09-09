@@ -21,6 +21,8 @@ import Morphir.Elm.Frontend as Frontend exposing (PackageInfo, SourceFile, Sourc
 import Morphir.Elm.Frontend.Codec as FrontendCodec
 import Morphir.Elm.IncrementalFrontend as IncrementalFrontend exposing (Errors, ModuleChange(..), OrderedFileChanges)
 import Morphir.Elm.IncrementalFrontend.Codec as IncrementalFrontendCodec
+import Morphir.Elm.IncrementalFrontend.Mapper as Mapper
+import Morphir.Elm.IncrementalResolve as IncrementalResolve
 import Morphir.Elm.Target exposing (decodeOptions, mapDistribution)
 import Morphir.File.FileChanges as FileChanges exposing (FileChanges)
 import Morphir.File.FileChanges.Codec as FileChangesCodec
@@ -30,12 +32,14 @@ import Morphir.File.FileSnapshot as FileSnapshot exposing (FileSnapshot)
 import Morphir.File.FileSnapshot.Codec as FileSnapshotCodec
 import Morphir.IR.Distribution as Distribution exposing (Distribution(..))
 import Morphir.IR.Distribution.Codec as DistroCodec
+import Morphir.IR.FQName as FQName
 import Morphir.IR.Name as Name
 import Morphir.IR.Package exposing (PackageName)
 import Morphir.IR.Path as Path
 import Morphir.IR.Repo as Repo exposing (Error(..), Repo)
 import Morphir.IR.SDK as SDK
 import Morphir.Stats.Backend as Stats
+import Parser
 import Process
 import Task
 
@@ -299,7 +303,7 @@ returnDistribution repoResult =
     repoResult
         |> Result.map Repo.toDistribution
         |> Result.map removePackageDependencies
-        |> encodeResult (Encode.list IncrementalFrontendCodec.encodeError) DistroCodec.encodeVersionedDistribution
+        |> encodeResult frontendErrorsToMessages DistroCodec.encodeVersionedDistribution
         |> buildCompleted
 
 
@@ -309,8 +313,8 @@ failOrProceed msgResult =
         Ok msg ->
             Process.sleep 0 |> Task.perform (always msg)
 
-        Err error ->
-            Encode.list IncrementalFrontendCodec.encodeError error |> buildFailed
+        Err errors ->
+            buildFailed (frontendErrorsToMessages errors)
 
 
 encodeResult : (e -> Encode.Value) -> (a -> Encode.Value) -> Result e a -> Encode.Value
@@ -327,3 +331,133 @@ encodeResult encodeErr encodeValue result =
                 [ encodeErr e
                 , Encode.null
                 ]
+
+
+frontendErrorsToMessages : IncrementalFrontend.Errors -> Encode.Value
+frontendErrorsToMessages errors =
+    let
+        frontendErrorToString : IncrementalFrontend.Error -> String
+        frontendErrorToString error =
+            case error of
+                IncrementalFrontend.ModuleCycleDetected moduleName1 moduleName2 ->
+                    String.join " "
+                        [ "Dependency cycle detected between modules"
+                        , Path.toString Name.toTitleCase "." moduleName1
+                        , "and"
+                        , Path.toString Name.toTitleCase "." moduleName2
+                        ]
+
+                IncrementalFrontend.TypeCycleDetected typeName1 typeName2 ->
+                    String.join " "
+                        [ "Dependency cycle detected between types"
+                        , Name.toTitleCase typeName1
+                        , "and"
+                        , Name.toTitleCase typeName2
+                        ]
+
+                IncrementalFrontend.TypeNotFound fQName ->
+                    String.join " "
+                        [ "Type"
+                        , FQName.toTypeNameString fQName
+                        , "not found"
+                        ]
+
+                IncrementalFrontend.ValueCycleDetected fQName1 fQName2 ->
+                    String.join " "
+                        [ "Dependency cycle detected between values"
+                        , FQName.toValueNameString fQName1
+                        , "and"
+                        , FQName.toValueNameString fQName2
+                        ]
+
+                IncrementalFrontend.InvalidModuleName elmModuleName ->
+                    String.join " "
+                        [ "Invalid module name:"
+                        , elmModuleName |> String.join "."
+                        ]
+
+                IncrementalFrontend.ParseError filePath deadEnds ->
+                    String.join " "
+                        [ String.concat [ "Parse error in file ", filePath, ":" ]
+                        , Parser.deadEndsToString deadEnds
+                        ]
+
+                IncrementalFrontend.RepoError message repoErrors ->
+                    String.concat
+                        [ "Repo error. "
+                        , message
+                        , ". "
+                        , repoErrors |> List.map repoErrorToString |> String.join ". "
+                        , "."
+                        ]
+
+                IncrementalFrontend.MappingError mapperError ->
+                    String.concat
+                        [ "Mapping error. "
+                        , mapperError |> List.map mapperErrorToString |> String.join ". "
+                        , "."
+                        ]
+
+                IncrementalFrontend.ResolveError moduleName resolveError ->
+                    String.concat
+                        [ "Resolver error in module "
+                        , Path.toString Name.toTitleCase "." moduleName
+                        , ": "
+                        , resolveErrorToString resolveError
+                        ]
+
+                IncrementalFrontend.InvalidSourceFilePath filePath message ->
+                    String.concat
+                        [ "Invalid source file path "
+                        , filePath
+                        , ": "
+                        , message
+                        ]
+    in
+    errors
+        |> List.map frontendErrorToString
+        |> Encode.list Encode.string
+
+
+repoErrorToString : Repo.Error -> String
+repoErrorToString repoError =
+    Debug.toString repoError
+
+
+mapperErrorToString : Mapper.Error -> String
+mapperErrorToString repoError =
+    Debug.toString repoError
+
+
+resolveErrorToString : IncrementalResolve.Error -> String
+resolveErrorToString resolveError =
+    case resolveError of
+        IncrementalResolve.NoMorphirPackageFoundForElmModule elmModuleName ->
+            String.concat [ "No corresponding Morphir package found for Elm module ", elmModuleName |> String.join "." ]
+
+        IncrementalResolve.ModuleNotImported strings ->
+
+
+        IncrementalResolve.ModuleOrAliasNotImported string ->
+
+
+        IncrementalResolve.ModuleDoesNotExposeLocalName packageName moduleName name kindOfName ->
+
+
+        IncrementalResolve.ModulesDoNotExposeLocalName string list name kindOfName ->
+
+
+        IncrementalResolve.MultipleModulesExposeLocalName list name kindOfName ->
+
+
+        IncrementalResolve.LocalNameNotImported name kindOfName ->
+
+
+        IncrementalResolve.ImportedModuleNotFound qualifiedModuleName ->
+
+
+        IncrementalResolve.ImportedLocalNameNotFound qualifiedModuleName name kindOfName ->
+
+
+        IncrementalResolve.ImportingConstructorsOfNonCustomType qualifiedModuleName name ->
+

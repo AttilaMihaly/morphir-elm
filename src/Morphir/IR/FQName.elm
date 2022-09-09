@@ -15,11 +15,11 @@
 -}
 
 
-module Morphir.IR.FQName exposing (FQName, fQName, fromQName, getPackagePath, getModulePath, getLocalName, fqn, toString, fromString)
+module Morphir.IR.FQName exposing (FQName, fQName, fromQName, getPackagePath, getModulePath, getLocalName, fqn, toString, toTypeNameString, toValueNameString, fromString)
 
 {-| Module to work with fully-qualified names. A qualified name is a combination of a package path, a module path and a local name.
 
-@docs FQName, fQName, fromQName, getPackagePath, getModulePath, getLocalName, fqn, toString, fromString
+@docs FQName, fQName, fromQName, getPackagePath, getModulePath, getLocalName, fqn, toString, toTypeNameString, toValueNameString, fromString
 
 -}
 
@@ -88,6 +88,32 @@ toString ( p, m, l ) =
         [ Path.toString Name.toTitleCase "." p
         , Path.toString Name.toTitleCase "." m
         , Name.toCamelCase l
+        ]
+
+
+{-| Convert a fully-qualified name to a type name
+-}
+toTypeNameString : FQName -> String
+toTypeNameString ( p, m, l ) =
+    String.join ":"
+        [ Path.toString Name.toTitleCase "." p
+        , String.join "."
+            [ Path.toString Name.toTitleCase "." m
+            , Name.toTitleCase l
+            ]
+        ]
+
+
+{-| Convert a fully-qualified name to a value name
+-}
+toValueNameString : FQName -> String
+toValueNameString ( p, m, l ) =
+    String.join ":"
+        [ Path.toString Name.toTitleCase "." p
+        , String.join "."
+            [ Path.toString Name.toTitleCase "." m
+            , Name.toCamelCase l
+            ]
         ]
 
 

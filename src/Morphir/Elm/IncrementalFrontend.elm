@@ -215,17 +215,12 @@ applyFileChanges packageName fileChanges opts maybeExposedModules repo =
                             |> Set.foldl
                                 (\exposedModule usedModulesSoFar ->
                                     DAG.collectForwardReachableNodes exposedModule modulesDeps
-                                        |> Debug.log "DAG.collectForwardReachableNodes exposedModule"
                                         |> Set.union usedModulesSoFar
                                 )
                                 exposedModules
 
                     modulesToProcess : Set ModuleName -> List ModuleChange
                     modulesToProcess usedModuleSet =
-                        let
-                            _ =
-                                Debug.log "Used Modules:" usedModuleSet
-                        in
                         fileChanges
                             |> List.filter
                                 (\fileChange ->
