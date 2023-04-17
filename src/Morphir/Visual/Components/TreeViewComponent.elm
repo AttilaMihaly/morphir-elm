@@ -48,7 +48,7 @@ viewSubTree theme config nodePath (Node label _ children) =
                 , bottom = 0
                 }
 
-        handle : String -> Maybe (NodePath comparable -> msg) -> Element msg
+        handle : Element Never -> Maybe (NodePath comparable -> msg) -> Element msg
         handle icon maybeOnClick =
             let
                 style =
@@ -70,7 +70,7 @@ viewSubTree theme config nodePath (Node label _ children) =
                 attribs
                 (el
                     [ center, Font.size 12, Font.color (rgb 0.3 0.3 0.3) ]
-                    (text icon)
+                    (Element.map never icon)
                 )
 
         viewNode : Element msg -> Element msg
@@ -85,7 +85,9 @@ viewSubTree theme config nodePath (Node label _ children) =
                         ]
 
                     else
-                        []
+                        [ Border.widthEach { left = 2, right = 0, bottom = 0, top = 0 }
+                        , Border.color theme.colors.lightest
+                        ]
             in
             el
                 (List.concat
@@ -95,19 +97,18 @@ viewSubTree theme config nodePath (Node label _ children) =
                       , Element.focused [ Background.color theme.colors.gray ]
                       , mouseOver
                             [ Background.color theme.colors.gray
-                            , Border.color theme.colors.primaryHighlight
                             ]
                       ]
                     ]
                 )
-                (row [ indentRight depth ]
+                (row [ indentRight depth, width fill ]
                     [ collapseControl
                     , label nodePath
                     ]
                 )
     in
     if Dict.isEmpty children then
-        [ viewNode (handle "" Nothing)
+        [ viewNode (handle none Nothing)
         ]
 
     else if config.collapsedPaths |> Set.member nodePath then

@@ -1906,13 +1906,13 @@ viewModuleNames model packageName parentModule allModuleNames =
         (\_ ->
             case currentModuleName of
                 Just name ->
-                    link [ pointer, onClick (handleModuleClick parentModule) ]
+                    link [ pointer, onClick (handleModuleClick parentModule), width fill ]
                         { label = text (name |> nameToTitleText)
                         , url = pathToFullUrl [ packageName, parentModule ] ++ filterStateToQueryParams model.homeState.filterState
                         }
 
                 Nothing ->
-                    link [ pointer, onClick (handleModuleClick packageName) ] { label = text (pathToUrl packageName), url = pathToFullUrl [ packageName ] ++ filterStateToQueryParams model.homeState.filterState }
+                    link [ pointer, onClick (handleModuleClick packageName), width fill ] { label = text (pathToUrl packageName), url = pathToFullUrl [ packageName ] ++ filterStateToQueryParams model.homeState.filterState }
         )
         Array.empty
         (childModuleNames

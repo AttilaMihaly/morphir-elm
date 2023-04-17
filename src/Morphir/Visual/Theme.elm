@@ -1,10 +1,13 @@
 module Morphir.Visual.Theme exposing (..)
 
-import Element exposing (Attribute, Color, Element, fill, height,  none, paddingXY, rgb, rgb255, rgba, rgba255, row, spacing, table, toRgb, width)
+import Element exposing (Attribute, Color, Element, fill, height, html, none, paddingXY, rgb, rgb255, rgba, rgba255, row, spacing, table, toRgb, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font exposing (center)
 import Element.Input as Input
+import FontAwesome as Icon
+import FontAwesome.Attributes as Icon
+import FontAwesome.Solid as Icon
 import Html exposing (div, text)
 import Html.Attributes exposing (style)
 
@@ -40,8 +43,8 @@ type alias Colors =
 
 
 type alias Icons =
-    { opened : String
-    , closed : String
+    { opened : Element Never
+    , closed : Element Never
     }
 
 
@@ -88,13 +91,13 @@ fromConfig maybeConfig =
             , brandPrimaryLight = rgba 0 0.639 0.882 0.3
             , brandSecondary = rgb 1 0.411 0
             , brandSecondaryLight = rgba 1 0.411 0 0.3
-            , warning = rgba255 238 210 2 0.9 
+            , warning = rgba255 238 210 2 0.9
             }
 
         defaultIcons : Icons
         defaultIcons =
-            { opened = "⮟"
-            , closed = "⮞"
+            { opened = html (Icon.chevronDown |> Icon.styled [ Icon.sm ] |> Icon.view)
+            , closed = html (Icon.chevronRight |> Icon.styled [ Icon.sm ] |> Icon.view)
             }
     in
     case maybeConfig of

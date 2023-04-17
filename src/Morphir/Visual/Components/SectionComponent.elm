@@ -1,11 +1,11 @@
 module Morphir.Visual.Components.SectionComponent exposing (..)
 
-import Element exposing (Element, column, el, fill, height, none, pointer, row, spacing, text, width)
+import Element exposing (Element, column, el, fill, height, none, padding, pointer, row, spacing, text, width)
 import Element.Background as Background
 import Element.Events exposing (onClick)
 import Element.Font as Font
 import Element.Input
-import Morphir.Visual.Theme exposing (Theme, mediumSpacing, smallSpacing)
+import Morphir.Visual.Theme as Theme exposing (Theme, mediumSpacing, smallSpacing)
 
 
 type alias Config msg =
@@ -22,13 +22,13 @@ view theme config =
         header : Element msg
         header =
             let
-                icon : String
+                icon : Element msg
                 icon =
                     if config.isOpen then
-                        theme.icons.opened
+                        Element.map never theme.icons.opened
 
                     else
-                        theme.icons.closed
+                        Element.map never theme.icons.closed
             in
             Element.Input.button
                 []
@@ -41,7 +41,7 @@ view theme config =
                         , smallSpacing theme |> spacing
                         , pointer
                         ]
-                        [ el [] (text icon), el [ Font.size theme.fontSize ] (text config.title) ]
+                        [ el [ padding (Theme.smallPadding theme) ] icon, el [ Font.size theme.fontSize ] (text config.title) ]
                 }
     in
     column [ width fill, height fill, Background.color theme.colors.lightest, mediumSpacing theme |> spacing ]
