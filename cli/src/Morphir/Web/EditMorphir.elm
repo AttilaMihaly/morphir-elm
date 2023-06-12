@@ -74,6 +74,8 @@ type alias LoadedModel =
     , editValues : List ( Type (), ValueEditor.EditorState )
     , selectableFields : List (Type.Field ())
     , selectableFuns : List ( FQName, Value.Specification () )
+    , elmSource : String
+    , errors : List Compiler.Error
     }
 
 
@@ -97,6 +99,7 @@ type Msg
     | PickFieldChanged (Picklist.State (Type.Field ()))
     | PickFunChanged (Picklist.State ( FQName, Value.Specification () ))
     | ValueChanged Int ValueEditor.EditorState
+    | ElmSourceChanged String
     | DoNothing
 
 
@@ -111,11 +114,13 @@ update msg model =
                     , pickField = Picklist.init Nothing
                     , pickFun = Picklist.init Nothing
                     , editValues = []
-                    , selectableFields = inputFields distro (FQName.fromString "Regulation:US.FR2052A.DataTables.Inflows.Assets:Assets" ":")
+                    , selectableFields = []
                     , selectableFuns = []
+                    , elmSource = initialElmSource
+                    , errors = []
                     }
             in
-            ( Loaded loadedModel, Cmd.none )
+            ( Loaded (loadedModel |> updateSource initialElmSource), Cmd.none )
 
         ( Loaded loadedModel, PickFieldChanged picklistState ) ->
             let
@@ -139,23 +144,10 @@ update msg model =
 
         ( Loaded loadedModel, PickFunChanged pickFunState ) ->
             let
-                editValues =
-                    case pickFunState |> Picklist.getSelectedTag of
-                        Just ( _, selectedFun ) ->
-                            selectedFun.inputs
-                                |> List.drop 1
-                                |> List.map
-                                    (\( _, argType ) ->
-                                        ( argType, ValueEditor.initEditorState (IR.fromDistribution loadedModel.distribution) argType Nothing )
-                                    )
-
-                        Nothing ->
-                            []
-
                 newLoadedModel =
                     { loadedModel
                         | pickFun = pickFunState
-                        , editValues = editValues
+                        , editValues = editValues pickFunState loadedModel.distribution
                     }
             in
             ( Loaded newLoadedModel, Cmd.none )
@@ -168,8 +160,102 @@ update msg model =
             , Cmd.none
             )
 
+        ( Loaded loadedModel, ElmSourceChanged sourceCode ) ->
+            ( Loaded (updateSource sourceCode loadedModel), Cmd.none )
+
         _ ->
             ( model, Cmd.none )
+
+
+editValues pickFunState distribution =
+    case pickFunState |> Picklist.getSelectedTag of
+        Just ( _, selectedFun ) ->
+            selectedFun.inputs
+                |> List.drop 1
+                |> List.map
+                    (\( _, argType ) ->
+                        ( argType, ValueEditor.initEditorState (IR.fromDistribution distribution) argType Nothing )
+                    )
+
+        Nothing ->
+            []
+
+
+updateSource : String -> LoadedModel -> LoadedModel
+updateSource sourceCode loadedModel =
+    let
+        opts =
+            { typesOnly = False }
+
+        sourceFiles =
+            [ { path = "Test.elm"
+              , content = elmSourcePrefix ++ sourceCode
+              }
+            ]
+
+        packageInfo =
+            { name = [ [ "regulation" ] ]
+            , exposedModules = Nothing
+            }
+
+        frontendResult : Result (List Compiler.Error) (Package.Definition Frontend.SourceLocation Frontend.SourceLocation)
+        frontendResult =
+            Frontend.mapSource opts packageInfo Dict.empty sourceFiles
+
+        typedResult : Result (List Compiler.Error) (Package.Definition () (Type ()))
+        typedResult =
+            frontendResult
+                |> Result.andThen
+                    (\packageDef ->
+                        let
+                            thisPackageSpec : Package.Specification ()
+                            thisPackageSpec =
+                                packageDef
+                                    |> Package.definitionToSpecificationWithPrivate
+                                    |> Package.mapSpecificationAttributes (\_ -> ())
+
+                            ir : IR
+                            ir =
+                                Frontend.defaultDependencies
+                                    |> Dict.insert packageInfo.name thisPackageSpec
+                                    |> IR.fromPackageSpecifications
+                        in
+                        packageDef
+                            --|> Package.mapDefinitionAttributes (\_ -> ()) identity
+                            --|> Infer.inferPackageDefinition ir
+                            --|> Result.map (Package.mapDefinitionAttributes (\_ -> ()) (\( _, tpe ) -> tpe))
+                            |> Package.mapDefinitionAttributes (\_ -> ()) (\_ -> Type.Unit ())
+                            |> Ok
+                    )
+
+        newDistribution : Distribution
+        newDistribution =
+            case ( typedResult, loadedModel.distribution ) of
+                ( Ok extraPackageDef, Library pName dependencies packageDef ) ->
+                    Library pName
+                        dependencies
+                        { packageDef
+                            | modules =
+                                packageDef.modules
+                                    |> Dict.union extraPackageDef.modules
+                        }
+
+                _ ->
+                    loadedModel.distribution
+    in
+    { loadedModel
+        | distribution = newDistribution
+        , selectableFields = inputFields newDistribution
+        , editValues = editValues loadedModel.pickFun newDistribution
+        , elmSource = sourceCode
+        , errors =
+            case typedResult of
+                Err errors ->
+                    errors
+
+                Ok _ ->
+                    []
+    }
 
 
 subscriptions : Model -> Sub Msg
@@ -243,8 +329,9 @@ viewLoaded model =
                 |> String.join " -> "
                 |> text
     in
-    column [ spacing 10 ]
-        [ row
+    column [ padding 10, spacing 10 ]
+        [ el [ Font.size 18 ] (text "Dynamic")
+        , row
             [ padding 5
             , spacing 5
             ]
@@ -287,7 +374,45 @@ viewLoaded model =
                     )
                 |> row [ spacing 5 ]
             ]
+        , el [ Font.size 18 ] (text "Static")
+        , viewElmCode model
         , viewIR model
+        ]
+
+
+viewElmCode : LoadedModel -> Element Msg
+viewElmCode model =
+    column []
+        [ SourceEditor.view model.elmSource ElmSourceChanged
+        , el
+            [ height shrink
+            , width fill
+            , padding 10
+            , Background.color
+                (if List.isEmpty model.errors then
+                    rgb 0.5 0.7 0.5
+
+                 else
+                    rgb 0.7 0.5 0.5
+                )
+            ]
+            (if List.isEmpty model.errors then
+                text "Parsed > Resolved > Type checked"
+
+             else
+                model.errors
+                    |> List.concatMap
+                        (\error ->
+                            case error of
+                                Compiler.ErrorsInSourceFile _ sourceErrors ->
+                                    sourceErrors
+                                        |> List.map (.errorMessage >> text >> List.singleton >> paragraph [])
+
+                                Compiler.ErrorAcrossSourceFiles e ->
+                                    [ Debug.toString e |> text ]
+                        )
+                    |> column []
+            )
         ]
 
 
@@ -296,14 +421,16 @@ viewIR model =
     none
 
 
-inputFields : Distribution -> FQName -> List (Type.Field ())
-inputFields distro ( packageName, moduleName, localName ) =
-    case distro |> Distribution.lookupTypeSpecification packageName moduleName localName of
-        Just (Type.TypeAliasSpecification _ (Type.Record _ fields)) ->
-            fields
+inputFields : Distribution -> List (Type.Field ())
+inputFields distro =
+    case FQName.fromString "Regulation:Test:Input" ":" of
+        ( packageName, moduleName, localName ) ->
+            case distro |> Distribution.lookupTypeSpecification packageName moduleName localName of
+                Just (Type.TypeAliasSpecification _ (Type.Record _ fields)) ->
+                    fields
 
-        _ ->
-            []
+                _ ->
+                    []
 
 
 applicableFunctions : Distribution -> Type () -> List ( FQName, Value.Specification () )
@@ -436,3 +563,31 @@ set index value list =
                 else
                     item
             )
+
+
+elmSourcePrefix : String
+elmSourcePrefix =
+    """module Regulation.Test exposing (..)
+
+import Morphir.SDK.LocalDate exposing (LocalDate)
+
+    """
+
+
+initialElmSource : String
+initialElmSource =
+    """type alias Input =
+    { currency : Currency
+    , converted : Bool
+    , tradeDate : LocalDate
+    }
+
+type Currency
+    = USD
+    | EUR
+    | GBP
+    | CHF
+    | JPY
+    | AUD
+    | CAD
+    """
