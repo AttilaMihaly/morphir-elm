@@ -14,11 +14,11 @@ type alias ColumnExp a =
 
 
 type Relation a
-    = From (ObjectExp a) Name
-    | Where (ColumnExp a) (Relation a)
-    | Select (Dict Name (ColumnExp a)) (Relation a)
-    | Join JoinType (ColumnExp a) (Relation a) (Relation a)
-    | GroupBy (List (ColumnExp a)) (Relation a)
+    = From a (ObjectExp a) Name
+    | Where a (ColumnExp a) (Relation a)
+    | Select a (Dict Name (ColumnExp a)) (Relation a)
+    | Join a JoinType (ColumnExp a) (Relation a) (Relation a)
+    | GroupBy a (List (ColumnExp a)) (Relation a)
 
 
 type JoinType
@@ -32,26 +32,26 @@ type JoinDirection
     | Full
 
 
-from : ObjectExp a -> Name -> Relation a
-from source alias =
-    From source alias
+from : a -> ObjectExp a -> Name -> Relation a
+from attribute source alias =
+    From attribute source alias
 
 
-where_ : ColumnExp a -> Relation a -> Relation a
-where_ predicate source =
-    Where predicate source
+where_ : a -> ColumnExp a -> Relation a -> Relation a
+where_ attribute predicate source =
+    Where attribute predicate source
 
 
-select : Dict Name (Value () a) -> Relation a -> Relation a
-select fields source =
-    Select fields source
+select : a -> Dict Name (Value () a) -> Relation a -> Relation a
+select attribute fields source =
+    Select attribute fields source
 
 
-join : JoinType -> ColumnExp a -> Relation a -> Relation a -> Relation a
-join joinType on left right =
-    Join joinType on left right
+join : a -> JoinType -> ColumnExp a -> Relation a -> Relation a -> Relation a
+join attribute joinType on left right =
+    Join attribute joinType on left right
 
 
-groupBy : List (ColumnExp a) -> Relation a -> Relation a
-groupBy keys source =
-    GroupBy keys source
+groupBy : a -> List (ColumnExp a) -> Relation a -> Relation a
+groupBy attribute keys source =
+    GroupBy attribute keys source
