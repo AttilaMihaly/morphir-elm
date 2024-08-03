@@ -9,6 +9,7 @@ import Element.Font as Font
 import Element.Input as Input
 import FontAwesome.Styles as Icon
 import Html exposing (Html)
+import Http
 import Morphir.Compiler as Compiler
 import Morphir.Elm.Frontend as Frontend exposing (SourceFile)
 import Morphir.IR.Distribution exposing (Distribution(..))
@@ -32,7 +33,9 @@ import Morphir.Visual.ValueEditor as ValueEditor
 import Morphir.Visual.ViewType as ViewType
 import Morphir.Visual.ViewValue as ViewValue
 import Morphir.Visual.XRayView as XRayView
+import Morphir.Web.OpenAIRequest as OpenAiRequest
 import Morphir.Web.SourceEditor as SourceEditor
+import Task
 
 
 
@@ -63,6 +66,8 @@ type alias Model =
     , errors : List Compiler.Error
     , irView : IRView
     , valueStates : Dict FQName ValueState
+    , openAiApiKey : String
+    , prompt : String
     }
 
 
@@ -90,6 +95,8 @@ init _ =
         , errors = []
         , irView = InsightView Dict.empty emptyVisualState
         , valueStates = Dict.empty
+        , openAiApiKey = ""
+        , prompt = ""
         }
 
 
@@ -114,7 +121,9 @@ emptyVisualState =
 
 
 type Msg
-    = ChangeSource String
+    = ChangePrompt String
+    | AiResponseReceived (Result Http.Error String)
+    | ChangeSource String
     | ChangeIRView IRView
     | UpdateInferStep FQName Int
     | ArgValueUpdated Name ValueEditor.EditorState
@@ -128,6 +137,15 @@ type alias InsightArgumentState =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ChangePrompt newPrompt ->
+            ( { model | prompt = newPrompt }, OpenAiRequest.fetchAPI newPrompt model.openAiApiKey AiResponseReceived )
+
+        AiResponseReceived (Ok response) ->
+            ( { model | source = response }, Task.perform ChangeSource (Task.succeed response) )
+
+        AiResponseReceived (Err _) ->
+            ( model, Cmd.none )
+
         ChangeSource sourceCode ->
             let
                 opts =
@@ -272,7 +290,26 @@ viewPackageResult model onSourceChange =
             , height fill
             , scrollbars
             ]
-            [ el [ height shrink, padding 10 ] (text "Source Model")
+            [ el [ height shrink, padding 10 ] (text "AI Prompt")
+            , el
+                [ width fill
+                , height (px 200)
+                , scrollbars
+                ]
+                (Input.multiline
+                    [ width fill
+                    , height fill
+
+                    --, scrollbars
+                    ]
+                    { text = model.prompt
+                    , placeholder = Just (Input.placeholder [] (text "Type your AI prompt here"))
+                    , onChange = ChangePrompt
+                    , label = Input.labelHidden "AI Prompt"
+                    , spellcheck = False
+                    }
+                )
+            , el [ height shrink, padding 10 ] (text "Source Model")
             , el
                 [ width fill
                 , height fill
