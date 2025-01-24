@@ -1,15 +1,18 @@
 module Morphir.Web.TryMorphir exposing (..)
 
 import Browser
+import Browser.Events as Events
 import Dict exposing (Dict)
-import Element exposing (Element, alignRight, column, el, fill, height, layout, none, padding, paddingEach, paddingXY, paragraph, px, rgb, row, scrollbars, shrink, spacing, text, width)
+import Element exposing (Element, alignRight, column, el, fill, height, htmlAttribute, layout, none, padding, paddingEach, paddingXY, paragraph, px, rgb, row, scrollbars, shrink, spacing, text, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import FontAwesome.Styles as Icon
 import Html exposing (Html)
+import Html.Events
 import Http
+import Json.Decode as Decode
 import Morphir.Compiler as Compiler
 import Morphir.Elm.Frontend as Frontend exposing (SourceFile)
 import Morphir.IR.Distribution exposing (Distribution(..))
@@ -122,6 +125,7 @@ emptyVisualState =
 
 type Msg
     = ChangePrompt String
+    | SendAiRequest
     | AiResponseReceived (Result Http.Error String)
     | ChangeSource String
     | ChangeIRView IRView
@@ -138,7 +142,10 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ChangePrompt newPrompt ->
-            ( { model | prompt = newPrompt }, OpenAiRequest.fetchAPI newPrompt model.openAiApiKey AiResponseReceived )
+            ( { model | prompt = newPrompt }, Cmd.none )
+
+        SendAiRequest ->
+            ( { model | prompt = "" }, OpenAiRequest.fetchAPI model.prompt model.openAiApiKey AiResponseReceived )
 
         AiResponseReceived (Ok response) ->
             ( { model | source = response }, Task.perform ChangeSource (Task.succeed response) )
@@ -299,6 +306,19 @@ viewPackageResult model onSourceChange =
                 (Input.multiline
                     [ width fill
                     , height fill
+                    , htmlAttribute
+                        (Html.Events.on "keydown"
+                            (Decode.field "keyCode" (Debug.log "code" Decode.int)
+                                |> Decode.andThen
+                                    (\keyCode ->
+                                        if keyCode == 13 then
+                                            Decode.succeed SendAiRequest
+
+                                        else
+                                            Decode.fail "not enter"
+                                    )
+                            )
+                        )
 
                     --, scrollbars
                     ]
