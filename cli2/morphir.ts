@@ -28,5 +28,9 @@ program
     "init",
     "Launches an interactive session to initialize a new morphir project."
   )
+  .command(
+    "decompile",
+    "Decompile a Morphir IR into per-module JSON files"
+  )
   .command("mcp", "Start a Model Context Protocol server for Morphir project interaction")
   .parse(process.argv);
