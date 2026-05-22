@@ -6,7 +6,7 @@ const fs = require('fs')
 const readFile = fs.readFileSync
 const mkdir = fs.mkdirSync
 const rmdir = util.promisify(fs.rm)
-const cli = require('../../morphir-cli/lib/cliAPI')
+const cli = require('../../morphir-cli/lib/legacyAPI')
 const writeFile = util.promisify(fs.writeFile)
 
 // utility function for joining strings with newlines

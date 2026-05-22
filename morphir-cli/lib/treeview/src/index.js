@@ -27,7 +27,7 @@ exports.getIR = void 0;
 const morphir_elm_1 = require("morphir-elm");
 const treeNode_1 = require("./treeNode");
 const d3 = __importStar(require("d3"));
-const Elm = require("morphir-elm/cli/web/insight.js");
+const Elm = require("morphir-elm/morphir-cli/web/insight.js");
 const treeviewTitle = "Treeview Display";
 window.onload = Home;
 function Home() {

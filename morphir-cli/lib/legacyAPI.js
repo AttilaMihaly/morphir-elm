@@ -6,7 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.test = exports.gen = void 0;
+exports.test = exports.writeFile = exports.make = exports.gen = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const util_1 = __importDefault(require("util"));
@@ -143,6 +143,57 @@ async function gen(input, outputPath, options) {
     return Promise.all([...writePromises, ...deletePromises]);
 }
 exports.gen = gen;
+async function readElmSources(dir) {
+    const readElmSource = async (filePath) => {
+        const content = await readFile(filePath);
+        return { path: filePath, content: content.toString() };
+    };
+    const readDir = async (currentDir) => {
+        const entries = await readdir(currentDir, { withFileTypes: true });
+        const elmSources = entries
+            .filter((e) => e.isFile() && e.name.endsWith(".elm"))
+            .map((e) => readElmSource(path_1.default.join(currentDir, e.name)));
+        const subDirSources = await entries
+            .filter((e) => e.isDirectory())
+            .map((e) => readDir(path_1.default.join(currentDir, e.name)))
+            .reduce(async (soFarPromise, nextPromise) => {
+            const soFar = await soFarPromise;
+            const next = await nextPromise;
+            return soFar.concat(next);
+        }, Promise.resolve([]));
+        return (await Promise.all(elmSources)).concat(subDirSources);
+    };
+    return readDir(dir);
+}
+async function packageDefinitionFromSource(morphirJson, sourceFiles, options) {
+    return new Promise((resolve, reject) => {
+        worker.ports.jsonDecodeError.subscribe((err) => {
+            reject(err);
+        });
+        worker.ports.packageDefinitionFromSourceResult.subscribe(([err, ok]) => {
+            if (err) {
+                reject(err);
+            }
+            else {
+                resolve(ok);
+            }
+        });
+        const opts = { typesOnly: options.typesOnly };
+        worker.ports.packageDefinitionFromSource.send([opts, morphirJson, sourceFiles]);
+    });
+}
+async function make(projectDir, options) {
+    const morphirJsonPath = path_1.default.join(projectDir, "morphir.json");
+    const morphirJson = JSON.parse((await readFile(morphirJsonPath)).toString());
+    const sourceFiles = await readElmSources(path_1.default.join(projectDir, morphirJson.sourceDirectory));
+    return packageDefinitionFromSource(morphirJson, sourceFiles, options);
+}
+exports.make = make;
+async function writeFile(filePath, content) {
+    await mkdir(path_1.default.dirname(filePath), { recursive: true });
+    return fsWriteFile(filePath, content);
+}
+exports.writeFile = writeFile;
 async function test(projectDir) {
     const morphirIRJsonPath = path_1.default.join(projectDir, "morphir-ir.json");
     const morphirIRJson = JSON.parse((await readFile(morphirIRJsonPath)).toString());

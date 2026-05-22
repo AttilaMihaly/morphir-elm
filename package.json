@@ -11,7 +11,8 @@
     "./ir": "./morphir-ts/dist/exports/ir.js",
     "./sdk": "./morphir-ts/dist/exports/sdk.js",
     "./ir/*": "./morphir-ts/dist/generated/morphir/ir/*.js",
-    "./sdk/*": "./morphir-ts/dist/sdk/*.js"
+    "./sdk/*": "./morphir-ts/dist/sdk/*.js",
+    "./morphir-cli/web/*": "./morphir-cli/web/*"
   },
   "scripts": {
     "prepare": "npm run setup-elm-tooling",

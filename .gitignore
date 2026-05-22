@@ -12,16 +12,24 @@ morphir-test-coverage.json
 generated/
 out/
 redistributable/Scala
-cli/web/insightapp.js
-cli/treeStuff.js
-cli/index.html
-cli2/lib/
 lib/geneated
 cadl-Frontend/cadl-output
-cli2/*.js
 docs.json
 /.coverage/
 tests-integration/reference-model/Dockerfile
+
+# morphir-cli build outputs
+morphir-cli/lib/
+morphir-cli/Morphir.Elm.CLI.js
+morphir-cli/Morphir.Elm.LegacyCLI.js
+morphir-cli/Morphir.Elm.DaprCLI.js
+morphir-cli/web/index.js
+morphir-cli/web/insightapp.js
+morphir-cli/web/insight.js
+morphir-cli/web/try-morphir.html
+morphir-cli/web/valueEditor.js
+morphir-cli/web/editor-custom-element.js
+morphir-cli/treeview/dist/
 
 .scala-build/
 *Debug.log*

@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "types": ["node", "mocha", "jest"],
-        "lib": ["ES2019"],
+        "lib": ["ES2019", "DOM"],
         "target": "es2019",
         "module": "nodenext",
         "moduleResolution": "nodenext",

@@ -1,7 +1,7 @@
 import { toDistribution, Morphir } from "morphir-elm";
 import { TreeNode } from "./treeNode";
 import * as d3 from "d3";
-const Elm = require("morphir-elm/cli/web/insight.js") as any;
+const Elm = require("morphir-elm/morphir-cli/web/insight.js") as any;
 
 const treeviewTitle: string = "Treeview Display";
 

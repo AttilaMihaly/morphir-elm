@@ -124,11 +124,12 @@ const buildMorphirCli =
         makeMorphirCliDevServerAPI,
         makeMorphirCliTryMorphir,
         series(makeMorphirCliInsightAPI, makeMorphirCliComponents),
-        buildMorphirCliTreeviewWebpack
+        buildTreeviewWebpack
     )
 
 export const buildMorphirTSLib = async () => {
-    await morphirElmMake('.', './morphir-ir.json', { typesOnly: false })
+    // The morphir-elm Elm package itself needs the legacy CLI worker to compile.
+    await morphirElmMake('.', './morphir-ir.json', { typesOnly: false, fallbackCli: true })
     // clean out previously generate files
     await del(['./morphir-ts/src/generated/', './morphir-ts/dist/'])
     await morphirElmGen('./morphir-ir.json', './morphir-ts/src/generated', 'TypeScript')
@@ -149,7 +150,9 @@ const build =
 
 
 function morphirElmMake(projectDir, outputPath, options = {}) {
-    let args = ['./morphir-cli/lib/morphir.js', 'make', '-p', projectDir, '-o', outputPath]
+    let args = options.fallbackCli
+        ? ['./morphir-cli/lib/morphir-elm.js', 'make', '-f', '-p', projectDir, '-o', outputPath]
+        : ['./morphir-cli/lib/morphir.js', 'make', '-p', projectDir, '-o', outputPath]
     if (options.typesOnly) {
         args.push('--types-only')
     }

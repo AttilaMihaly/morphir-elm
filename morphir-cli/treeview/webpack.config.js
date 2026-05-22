@@ -23,6 +23,18 @@ module.exports = {
         include: path.resolve(__dirname, "./src/"),
         exclude: /node_modules/,
         loader: "ts-loader",
+      },
+      {
+        // morphir-ts/dist files use ESM syntax (`export *`) even though the
+        // package root is "type": "commonjs". Tell webpack to parse them as
+        // ESM directly. The fullySpecified: false bit is needed because the
+        // morphir-generated files omit explicit .js extensions on imports.
+        test: /\.js$/,
+        include: path.resolve(__dirname, "../../morphir-ts"),
+        type: "javascript/esm",
+        resolve: {
+          fullySpecified: false,
+        },
       }
     ]
   },
