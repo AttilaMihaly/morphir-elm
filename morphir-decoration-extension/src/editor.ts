@@ -12,7 +12,7 @@ export function getWebviewOptions(
     // And restrict the webview to only loading content from the directory paths added in here.
     localResourceRoots: [
       vscode.Uri.joinPath(extensionUri, "media"),
-      vscode.Uri.joinPath(extensionUri, "../cli/web"),
+      vscode.Uri.joinPath(extensionUri, "../morphir-cli/web"),
       vscode.Uri.joinPath(extensionUri, "../test-integration"),
     ],
   };
@@ -182,13 +182,13 @@ export class DecorationPanel {
 
     const customValueEditorPath = vscode.Uri.joinPath(
       this._extensionUri,
-      "../cli/web/valueEditor.js"
+      "../morphir-cli/web/valueEditor.js"
     );
     const customEditorUri = webview.asWebviewUri(customValueEditorPath);
 
     const customElementPath = vscode.Uri.joinPath(
       this._extensionUri,
-      "../cli/web/editor-custom-element.js"
+      "../morphir-cli/web/editor-custom-element.js"
     );
     const customElementUri = webview.asWebviewUri(customElementPath);
 

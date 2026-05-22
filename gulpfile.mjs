@@ -22,14 +22,14 @@ import mocha from 'gulp-mocha';
 import shell from 'shelljs';
 
 import webpack from 'webpack-stream';
-import webpackConfig from './cli/treeview/webpack.config.js';
+import morphirCliWebpackConfig from './morphir-cli/treeview/webpack.config.js';
 
 import ts from 'gulp-typescript';
 import tsp from 'typescript';
 const { isExpressionWithTypeArguments } = tsp;
 
 const mainTsProject = ts.createProject('./tsconfig.json')
-const cliTsProject = ts.createProject('./cli2/tsconfig.json')
+const morphirCliTsProject = ts.createProject('./morphir-cli/tsconfig.json')
 const readFile = util.promisify(fs.readFile)
 
 async function request({ url, method, headers, body }) {
@@ -82,46 +82,53 @@ function make(rootDir, source, target) {
     return elmMake([source], { cwd: path.join(process.cwd(), rootDir), output: target }) // // nosemgrep : path-join-resolve-traversal
 }
 
-function makeCLI() {
-    return make('cli', 'src/Morphir/Elm/CLI.elm', 'Morphir.Elm.CLI.js')
+function makeMorphirCli() {
+    return make('morphir-cli', 'src/Morphir/Elm/CLI.elm', 'Morphir.Elm.CLI.js')
 }
 
-function makeCLI2() {
-    return make('cli2', 'src/Morphir/Elm/CLI.elm', 'Morphir.Elm.CLI.js')
+function makeMorphirCliLegacy() {
+    return make('morphir-cli/legacy', 'src/Morphir/Elm/CLI.elm', '../Morphir.Elm.LegacyCLI.js')
 }
 
-function makeDevCLI() {
-    return make('cli', 'src/Morphir/Elm/DevCLI.elm', 'Morphir.Elm.DevCLI.js')
+function makeMorphirCliDapr() {
+    return make('morphir-cli/legacy', 'src/Morphir/Elm/DaprCLI.elm', '../Morphir.Elm.DaprCLI.js')
 }
 
-function makeDevServer() {
-    return make('cli', 'src/Morphir/Web/DevelopApp.elm', 'web/index.js')
+function makeMorphirCliDevServer() {
+    return make('morphir-cli/legacy', 'src/Morphir/Web/DevelopApp.elm', '../web/index.js')
 }
 
-function makeDevServerAPI() {
-    return make('cli', 'src/Morphir/Web/DevelopApp.elm', 'web/insightapp.js')
+function makeMorphirCliDevServerAPI() {
+    return make('morphir-cli/legacy', 'src/Morphir/Web/DevelopApp.elm', '../web/insightapp.js')
 }
 
-function makeInsightAPI() {
-    return make('cli', 'src/Morphir/Web/Insight.elm', 'web/insight.js')
+function makeMorphirCliInsightAPI() {
+    return make('morphir-cli/legacy', 'src/Morphir/Web/Insight.elm', '../web/insight.js')
 }
 
-function makeTryMorphir() {
-    return make('cli', 'src/Morphir/Web/TryMorphir.elm', 'web/try-morphir.html')
+function makeMorphirCliTryMorphir() {
+    return make('morphir-cli/legacy', 'src/Morphir/Web/TryMorphir.elm', '../web/try-morphir.html')
 }
 
-async function makeComponents() {
-    return src(['./cli/web/insight.js', './cli/web/morphir-insight-element.js']).pipe(concat('insight.js')).pipe(dest('./cli/web/'))
+async function makeMorphirCliComponents() {
+    return src(['./morphir-cli/web/insight.js', './morphir-cli/web/morphir-insight-element.js']).pipe(concat('insight.js')).pipe(dest('./morphir-cli/web/'))
 }
 
-const buildCLI2 =
+const buildMorphirCli =
     parallel(
-        compileCli2Ts,
-        makeCLI2
+        compileMorphirCliTs,
+        makeMorphirCli,
+        makeMorphirCliLegacy,
+        makeMorphirCliDapr,
+        makeMorphirCliDevServer,
+        makeMorphirCliDevServerAPI,
+        makeMorphirCliTryMorphir,
+        series(makeMorphirCliInsightAPI, makeMorphirCliComponents),
+        buildMorphirCliTreeviewWebpack
     )
 
 export const buildMorphirTSLib = async () => {
-    await morphirElmMakeRunOldCli('.', './morphir-ir.json', { typesOnly: false })
+    await morphirElmMake('.', './morphir-ir.json', { typesOnly: false })
     // clean out previously generate files
     await del(['./morphir-ts/src/generated/', './morphir-ts/dist/'])
     await morphirElmGen('./morphir-ir.json', './morphir-ts/src/generated', 'TypeScript')
@@ -130,27 +137,19 @@ export const buildMorphirTSLib = async () => {
 }
 
 export function buildTreeviewWebpack(){
-    return src('./cli/treeview/src/index.ts').pipe(webpack(webpackConfig)).pipe(dest('./cli/treeview/dist'));
+    return src('./morphir-cli/treeview/src/index.ts').pipe(webpack(morphirCliWebpackConfig)).pipe(dest('./morphir-cli/treeview/dist'));
 }
 
 const build =
     series(
         checkElmDocs,
-        makeCLI,
-        makeDevCLI,
-        buildCLI2,
-        buildTreeviewWebpack,
-        buildMorphirTSLib,
-        makeDevServer,
-        makeDevServerAPI,
-        makeInsightAPI,
-        makeComponents,
-        makeTryMorphir
+        buildMorphirCli,
+        buildMorphirTSLib
     )
 
 
 function morphirElmMake(projectDir, outputPath, options = {}) {
-    let args = ['./cli/morphir-elm.js', 'make', '-p', projectDir, '-o', outputPath]
+    let args = ['./morphir-cli/lib/morphir.js', 'make', '-p', projectDir, '-o', outputPath]
     if (options.typesOnly) {
         args.push('--types-only')
     }
@@ -158,43 +157,20 @@ function morphirElmMake(projectDir, outputPath, options = {}) {
     return execa('node', args, { stdio })
 }
 
-function morphirElmMakeRunOldCli(projectDir, outputPath, options = {}) {
-    let args = ['./cli/morphir-elm.js', 'make', '-f', '-p', projectDir, '-o', outputPath]
-    if (options.typesOnly) {
-        args.push('--types-only')
-    }
-    console.log("Running: " + args.join(' '));
-    return execa('node', args, { stdio })
-}
-
-function morphirElmMake2(projectDir, outputPath, options = {}) {
-    let args = ['./cli2/lib/morphir.js', 'make', '-p', projectDir, '-o', outputPath]
-    if (options.typesOnly) {
-        args.push('--types-only')
-    }
-    console.log("Running: " + args.join(' '));
-    return execa('node', args, { stdio })
-}
-
-// Generate the IR for the Json Schema mdel
+// Generate the IR for the Json Schema model
 function morphirElmMakeJsonSchema(projectDir, outputPath, options = {}) {
-    let args = ['./cli2/lib/morphir.js', 'make', '-p', projectDir, '-o', outputPath]
-    if (options.typesOnly) {
-        args.push('--types-only')
-    }
-    console.log("Running: " + args.join(' '));
-    return execa('node', args, { stdio })
+    return morphirElmMake(projectDir, outputPath, options)
 }
 
 function morphirElmGen(inputPath, outputDir, target) {
-    let args = ['./cli/morphir-elm.js', 'gen', '-i', inputPath, '-o', outputDir, '-t', target]
+    let args = ['./morphir-cli/lib/morphir-elm-gen.js', '-i', inputPath, '-o', outputDir, '-t', target]
     console.log("Running: " + args.join(' '));
     return execa('node', args, { stdio })
 }
 
 // Test the json-schema-gen command.
 async function morphirJsonSchemaGen(inputPath, outputDir, target) {
-    let args = ['./cli2/lib/morphir-json-schema-gen.js', 'json-schema-gen', '-i', inputPath, '-o', outputDir, '-t', target]
+    let args = ['./morphir-cli/lib/morphir-json-schema-gen.js', 'json-schema-gen', '-i', inputPath, '-o', outputDir, '-t', target]
     console.log("Running: " + args.join(' '));
     try {
         await execa('node', args, { stdio })
@@ -207,7 +183,7 @@ async function morphirJsonSchemaGen(inputPath, outputDir, target) {
 
 function morphirDockerize(projectDir, options = {}) {
     let command = 'dockerize'
-    let funcLocation = './cli2/lib/morphir-dockerize.js'
+    let funcLocation = './morphir-cli/lib/morphir-dockerize.js'
     let projectDirFlag = '-p'
     let overwriteDockerfileFlag = '-f'
     let projectDirArgs = [projectDirFlag, projectDir]
@@ -226,13 +202,13 @@ async function testUnit(cb) {
     await execa('elm-test');
 }
 
-async function compileCli2Ts() {
-    src(['./cli2/*.ts', '!./cli2/*.test.ts']).pipe(cliTsProject()).pipe(dest('./cli2/lib/'))
+async function compileMorphirCliTs() {
+    src(['./morphir-cli/*.ts', '!./morphir-cli/*.test.ts']).pipe(morphirCliTsProject()).pipe(dest('./morphir-cli/lib/'))
 }
 
 
 async function compileMain2Ts() {
-    src('./lib/main.ts').pipe(cliTsProject()).pipe(dest('./cli2/lib/main.js'))
+    src('./lib/main.ts').pipe(morphirCliTsProject()).pipe(dest('./morphir-cli/lib/main.js'))
 }
 
 function testIntegrationClean() {
@@ -248,10 +224,6 @@ function testIntegrationClean() {
 async function testIntegrationMake(cb) {
 
     await morphirElmMake(
-        './tests-integration/reference-model',
-        './tests-integration/generated/refModel/morphir-ir.json')
-
-    await morphirElmMakeRunOldCli(
         './tests-integration/reference-model',
         './tests-integration/generated/refModel/morphir-ir.json')
 
@@ -279,7 +251,7 @@ async function testIntegrationMorphirTest(cb) {
         .pipe(dest('./tests-integration/reference-model/'))
     await execa(
         'node',
-        ['./cli/morphir-elm.js', 'test', '-p', './tests-integration/reference-model'],
+        ['./morphir-cli/lib/morphir-elm.js', 'test', '-p', './tests-integration/reference-model'],
         { stdio },
     )
 }
@@ -461,8 +433,8 @@ const csvfiles = series(
 )
 
 export {
-    build, buildCLI2, checkPackageLockJson, clean, compileMain2Ts, csvfiles, makeCLI,
-    makeDevCLI, test, testIntegration,
+    build, buildMorphirCli, checkPackageLockJson, clean, compileMain2Ts, csvfiles,
+    test, testIntegration,
     testIntegrationSpark,
     testMorphirIR
 };

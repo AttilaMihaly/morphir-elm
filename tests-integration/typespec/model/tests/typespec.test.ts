@@ -15,7 +15,7 @@ const generatedCadl = path.join(projectDir, "dist")
 const morphirIR = path.join(projectDir,"morphir-ir.json")
 
 // cli stuffs
-const cli = require("../../../../cli/cli.js")
+const cli = require("../../../../morphir-cli/lib/cli-compat")
 const makeCmdOpts = { typesOnly: false, output: projectDir }
 const genCmdOpts = { target: "TypeSpec" }
 

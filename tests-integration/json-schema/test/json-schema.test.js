@@ -10,7 +10,7 @@ const ajv2020 = require("ajv/dist/2020")
 const addFormats = require("ajv-formats")
 const fs = require('fs')
 const util = require('util')
-const cli = require('../../../cli/cli')
+const cli = require('../../../morphir-cli/lib/cli-compat')
 
 // Variables
 const basePath = "tests-integration/json-schema/model/"

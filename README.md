@@ -33,49 +33,65 @@ npm install -g morphir-elm
 
 ## Usage
 
-All the features can be accessed through sub-commands within the `morphir-elm` command:
+The package installs three entry points:
+
+- `morphir` — newer CLI surface, used for codegen targets, MCP, project init, dockerization, etc.
+- `morphir-elm` — original CLI surface, retained for backwards compatibility. Covers the IR build, generic codegen, and the web tools.
+- `morphir-dapr` — standalone command that generates a Dapr application from a Morphir model.
+
+Both umbrellas share implementation behind the scenes (the `make` operation, for example, is the same code whether invoked as `morphir make` or `morphir-elm make`). Pick the umbrella that matches the subcommand you want.
 
 ```
-Usage: morphir-elm -f [options] [command]
-
-Options:
-  -v, --version  output the version number
-  -h, --help     output usage information
+Usage: morphir-elm [options] [command]
 
 Commands:
   make           Translate Elm sources to Morphir IR
   gen            Generate code from Morphir IR
   develop        Start up a web server and expose developer tools through a web UI
-  help [cmd]     display help for [cmd]
+  test           Run the test cases recorded in morphir-tests.json
+  treeview       Start up a web server that exposes the model as a tree view
 ```
 
-Each command has different options which are detailed below:
+```
+Usage: morphir [options] [command]
 
-### `morphir-elm make`
+Commands:
+  make             Translate Elm sources to Morphir IR
+  json-schema-gen  Generate JSON Schema from the Morphir IR
+  stats            Collect Morphir features used in a model into a document
+  dockerize        Create a Docker image of a Morphir IR and Morphir Develop
+  test-coverage    Report branch / test-case coverage for a Morphir model
+  init             Interactive session that scaffolds a new Morphir project
+  mcp              Start a Model Context Protocol server for Morphir projects
+  scala-gen        Generate Scala code from Morphir IR
+  snowpark-gen     Generate Scala-with-Snowpark code from Morphir IR
+  typescript-gen   Generate TypeScript code from Morphir IR
+```
 
-This command reads Elm sources, translates to Morphir IR and outputs the IR into JSON.
+Most subcommands take `-h, --help` to print their flags.
+
+### `morphir-elm make` / `morphir make`
+
+Reads Elm sources, translates to Morphir IR, and writes the IR as JSON.
 
 ```
-Usage: morphir-elm make [options]
-
-Translate Elm sources to Morphir IR
-
 Options:
-  -p, --project-dir <path>  Root directory of the project where morphir.json is located. (default: ".")
-  -o, --output <path>       Target file location where the Morphir IR will be saved. (default: "morphir-ir.json")
-  -h, --help                output usage information
-  -f, --fallback-cli        Use old cli make function - recommended (default: false)
+  -p, --project-dir <path>      Root directory of the project where morphir.json is located. (default: ".")
+  -o, --output <path>           Target file location where the Morphir IR will be saved. (default: "morphir-ir.json")
+  -t, --types-only              Only include type information in the IR, no values. (default: false)
+  -i, --indent-json             Use indentation in the generated JSON file. (default: false)
+  -I, --include [pathOrUrl...]  Include additional Morphir distributions as a dependency.
+                                Can be specified multiple times. Path, URL, or data-URL.
 ```
 
-**Important**: The command requires a configuration file called `morphir.json` located in the project
-root directory with the following structure:
+**Important**: the command requires a `morphir.json` configuration file in the project root:
 
 ```
 {
     "name": "My.Package",
     "sourceDirectory": "src",
-    "dependencies" : ["a", "b"]
-    "localDependencies" : ["a", "b"]
+    "dependencies": ["a", "b"],
+    "localDependencies": ["a", "b"],
     "exposedModules": [
         "Foo",
         "Bar"
@@ -83,96 +99,194 @@ root directory with the following structure:
 }
 ```
 
-- **name** - The name of the package. The package name should be a valid Elm module name and it should be used as a
-  module prefix in your Elm models. If your package name is `My.Package` all your module files should either be directly
-  under that or in submodules.
-- **sourceDirectory** - The directory where your Elm sources are located.
-- **dependencies** - List of URI references to other IR files. Supports
-  `file://`|`http://`|`https://`|`data://` protocols.
+- **name** — Name of the package. Must be a valid Elm module name; used as the prefix for all Elm modules in the package.
+- **sourceDirectory** — Directory containing your Elm sources.
+- **dependencies** — URI references to other IR files. Supports `file://`, `http://`, `https://`, `data://`.
+- **localDependencies** — Relative paths to depending IRs (e.g. `"../sibling-folder/morphir-ir.json"`); kept for backwards compatibility.
+- **exposedModules** — Modules in the public interface of the package. Names exclude the common prefix; `Foo` refers to `My.Package.Foo`.
 
-* **localDependencies** - List of relative paths to depending IRs. (for backwards compatibility), ex: `"../sibling-folder/morphir-ir.json"`
-
-- **exposedModules** - The list of modules in the public interface of the package. Module names should exclude the
-  common package prefix. In the above example `Foo` refers to the Elm module `My.Package.Foo`.
-
-#### Examples
-
-If you want to try the `make` command you can use the reference model we have under `tests-integration/reference-model`. Simply `cd` into the directory and run the command.
+A working example is available under `tests-integration/reference-model` — `cd` in and run the command.
 
 ### `morphir-elm gen`
 
-This command reads the JSON produced by `morphir-elm make` and generates code into the specified folder:
+Reads the IR produced by `make` and generates code into the output folder. For finer-grained control over the JSON Schema, Scala, Snowpark, or TypeScript backends, prefer the dedicated `morphir json-schema-gen` / `scala-gen` / `snowpark-gen` / `typescript-gen` commands documented below.
 
 ```
-Usage: morphir-elm gen [options]
-
-Generate code from Morphir IR
-
 Options:
-  -i, --input <path>              Source location where the Morphir IR will be loaded from. (default: "morphir-ir.json")
-  -o, --output <path>             Target location where the generated code will be saved. (default: "./dist")
-  -t, --target <type>             Language to Generate (Scala | SpringBoot | cypher | triples). (default: "Scala")
-  -e, --target-version <version>  Language version to Generate. (default: "2.11")
-  -c, --copy-deps                 Copy the dependencies used by the generated code to the output path. (default: false)
-  -h, --help                      output usage information
+  -i, --input <path>                                Source IR. (default: "morphir-ir.json")
+  -o, --output <path>                               Target output directory. (default: "./dist")
+  -t, --target <type>                               Language to generate
+                                                    (Scala | SpringBoot | cypher | triples | TypeScript | Snowpark).
+                                                    (default: "Scala")
+  -e, --target-version <version>                    Language version to generate. (default: "2.11")
+  -c, --copy-deps                                   Copy backend dependencies into the output path. (default: false)
+  -m, --modules-to-include <module.names>           Comma-separated allow-list of modules to include.
+  -s, --include-codecs                              Generate JSON codecs. (default: false)
+  -f, --filename <filename>                         Filename of the generated JSON Schema. (default: "")
+  -ls, --include <strings>                          Comma-separated allow-list of names to include. (default: "")
+  -dec, --decorations <filename>                    JSON file with decorations.
 ```
 
-#### Examples
-
-If you want to try the `gen` command you can use the reference model we have under `tests-integration/reference-model`. Simply `cd` into the directory and run the command.
+When `--target TypeScript` is used the command delegates to `morphir typescript-gen`.
 
 ### `morphir-elm develop`
 
-This command relies on the JSON produced by `morphir-elm make` and brings up a web server to browse the Morphir IR.
+Brings up a web server that browses the IR produced by `morphir-elm make`.
 
 ```
-Usage: morphir-elm develop [options]
+Options:
+  -p, --port <port>         Port to bind to. (default: "3000")
+  -o, --host <host>         Host to bind to. (default: "localhost")
+  -i, --project-dir <path>  Root directory of the project where morphir.json is located. (default: ".")
+```
 
-Start up a web server and expose developer tools through a web UI
+### `morphir-elm test`
 
+Runs the test cases stored in `morphir-tests.json` against the IR.
+
+```
 Options:
   -p, --project-dir <path>  Root directory of the project where morphir.json is located. (default: ".")
-  -h, --help                output usage information
 ```
 
-#### Examples
+### `morphir-elm treeview`
 
-If you want to try the `develop` server you can use the reference model we have under `tests-integration/reference-model`. Simply `cd` into the directory and run the command.
+Brings up a web server with a tree-view of the IR.
+
+```
+Options:
+  -p, --port <port>         Port to bind to. (default: "3000")
+  -o, --host <host>         Host to bind to. (default: "localhost")
+  -i, --project-dir <path>  Root directory of the project where morphir.json is located. (default: ".")
+```
+
+### `morphir json-schema-gen`
+
+Generates JSON Schema from the Morphir IR. More flexible than `morphir-elm gen -t JsonSchema`.
+
+```
+Options:
+  -i, --input <path>                       Source IR. (default: "morphir-ir.json")
+  -o, --output <path>                      Output directory. (default: "./dist")
+  -t, --target <type>                      Schema flavour. (default: "JsonSchema")
+  -e, --target-version <version>           Schema version to generate. (default: "2020-12")
+  -f, --filename <filename>                Filename of the generated schema. (default: "")
+  -m, --limit-to-modules <module.names>    Comma-separated allow-list of modules.
+  -g, --group-schema-by <string>           Group output by `package`, `module`, or `type`. (default: "package")
+  -c, --use-config                         Read configuration from a config file. (default: false)
+  -ls, --include <strings>                 Comma-separated allow-list of names. (default: "")
+  -d, --use-decorators                     Read configuration from decorator dictionary. (default: false)
+```
+
+### `morphir scala-gen`
+
+Generates Scala code from the Morphir IR.
+
+```
+Options:
+  -i, --input <path>                                Source IR. (default: "morphir-ir.json")
+  -o, --output <path>                               Output directory. (default: "./dist")
+  -t, --target <type>                               Backend variant. (default: "Scala")
+  -e, --target-version <version>                    Scala version. (default: "2.11")
+  -c, --copy-deps                                   Copy backend dependencies into the output. (default: false)
+  -m, --limitToModules <module.names>               Comma-separated allow-list of modules.
+  -s, --include-codecs <type>                       Generate Scala codecs. (default: false)
+  --generate-test-generic                           Generate generic test cases from morphir tests. (default: false)
+  --generate-test-scalatest                         Generate runnable scalatest cases. (default: false)
+```
+
+### `morphir snowpark-gen`
+
+Generates Scala-with-Snowpark code from the Morphir IR.
+
+```
+Options:
+  -i, --input <path>              Source IR. (default: "morphir-ir.json")
+  -o, --output <path>             Output directory. (default: "./dist")
+  -dec, --decorations <filename>  JSON file with decorations.
+```
+
+### `morphir typescript-gen`
+
+Generates TypeScript code from the Morphir IR.
+
+```
+Options:
+  -i, --input <path>   Source IR. (default: "morphir-ir.json")
+  -o, --output <path>  Output directory. (default: "./dist")
+  -c, --copy-deps      Copy backend dependencies into the output path. (default: false)
+```
+
+### `morphir stats`
+
+Writes a report of the Morphir features used by the model.
+
+```
+Options:
+  -i, --input <path>   Source IR. (default: "morphir-ir.json")
+  -o, --output <path>  Output directory. (default: "./stats")
+```
+
+### `morphir test-coverage`
+
+Generates a coverage report comparing branch counts in the IR against the recorded test cases.
+
+```
+Options:
+  -i, --ir <path>      Source IR. (default: "morphir-ir.json")
+  -t, --tests <path>   Test JSON. (default: "morphir-tests.json")
+  -o, --output <path>  Output directory. (default: ".")
+```
+
+### `morphir dockerize`
+
+Builds a Docker image bundling a Morphir IR with Morphir Develop.
+
+```
+Options:
+  -p, --project-dir <path>  Root directory of the project where morphir.json is located. (default: ".")
+  -f, --force               Overwrite any Dockerfile in the target location. (default: false)
+```
+
+### `morphir init`
+
+Launches an interactive session that scaffolds a new Morphir project (`morphir.json`, `elm.json`, source folder).
 
 ### `morphir mcp`
 
-This command starts a Model Context Protocol (MCP) server that provides tools for interacting with Morphir projects through AI assistants and other MCP-compatible clients.
+Starts a Model Context Protocol (MCP) server that exposes Morphir-project tooling to MCP-compatible clients (AI assistants, IDEs, etc.).
 
 ```
-Usage: morphir mcp [options]
-
-Start a Model Context Protocol server for Morphir project interaction
-
 Options:
-  --elm-command <command>     Specify the Elm command to use for compilation (default: "elm")
-  --root-dir <directory>      Specify the root directory of the Morphir project (required)
-  -h, --help                  output usage information
+  --elm-command <command>  Elm command used for compilation. (default: "elm")
+  --root-dir <directory>   Root directory of the Morphir project. (required)
 ```
 
-The MCP server provides the following tools:
-- **addModule**: Adds a new module to the Morphir project with Elm code
-- **setTestCases**: Sets test cases for functions in the Morphir project
+The server exposes:
 
-The server automatically creates `morphir.json` and `elm.json` configuration files if they don't exist, making it easy to start a new Morphir project from scratch.
+- **addModule** — adds a new module to the project with Elm code.
+- **setTestCases** — sets test cases for functions in the project.
 
-#### Examples
+It creates `morphir.json` and `elm.json` if missing, making it usable on a brand-new project.
 
-Start the MCP server for a project in the current directory:
 ```bash
 morphir mcp --root-dir .
-```
-
-Start the MCP server with a custom Elm command:
-```bash
 morphir mcp --root-dir ./my-project --elm-command /path/to/elm
 ```
 
-**Note**: The MCP server is designed to be used with AI assistants and other MCP-compatible clients. It uses stdin/stdout for communication according to the MCP protocol specification.
+The server communicates over stdin/stdout per the MCP protocol.
+
+### `morphir-dapr`
+
+Standalone command that generates a Dapr application from a Morphir model. Requires a `morphir-dapr.json` config in the project root.
+
+```
+Options:
+  -p, --project-dir <path>  Root directory of the project where morphir-dapr.json is located. (default: ".")
+  -o, --output <path>       Target location for the Dapr sources. (default: "dapr-output")
+  -i, --info                Print the intermediate Elm output to stdout.
+  -d, --delete              Delete the build directory after generation.
+```
 
 # Elm package
 

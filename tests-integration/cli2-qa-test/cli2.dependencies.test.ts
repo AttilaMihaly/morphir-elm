@@ -1,4 +1,4 @@
-import * as getUriWrapper from '../../cli2/lib/get-uri-wrapper';
+import * as getUriWrapper from '../../morphir-cli/lib/get-uri-wrapper';
 
 
 
@@ -9,8 +9,8 @@ const fs = require('fs')
 const mkdir = fs.mkdirSync
 const copyRecursive = util.promisify(fs.cp)
 const rmdir = util.promisify(fs.rm)
-const cli2 = require('../../cli2/lib/cli')
-const cli = require('../../cli/cli')
+const cli2 = require('../../morphir-cli/lib/cli')
+const cli = require('../../morphir-cli/lib/cli-compat')
 const writeFile = util.promisify(fs.writeFile)
 const readFile = util.promisify(fs.readFile)
 const rmFile = util.promisify(fs.rm)
@@ -196,7 +196,7 @@ describe('morphir dependencies', () => {
 			await copyRecursive(DEPENDENCY_PROJECT_SOURCE, PATH_TO_DEPENDENCY_PROJECT, { recursive: true })
 			await copyRecursive(PROJECT_SOURCE, PATH_TO_PROJECT, { recursive: true })
 
-			jest.mock('../../cli2/lib/get-uri-wrapper');
+			jest.mock('../../morphir-cli/lib/get-uri-wrapper');
 
 		})
 

@@ -5,7 +5,7 @@ import { TextEncoder, TextDecoder } from "util";
 
 Object.assign(global, { TextDecoder, TextEncoder });
 import { JSDOM } from "jsdom";
-import { getIR } from "../../cli/treeview/src/index";
+import { getIR } from "../../morphir-cli/treeview/src/index";
 
 const { window } = new JSDOM(`<!DOCTYPE html><body><div></div></body>`);
 

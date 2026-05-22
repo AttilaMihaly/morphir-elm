@@ -2,8 +2,8 @@
 This file contains test cases for the inferBackendConfig() 
 function defined in  the config-processing.ts file @see 
 */
-import type {JsonBackendOptions} from '../../../cli2/config-processing'
-import configProcessing from '../../../cli2/config-processing'
+import type {JsonBackendOptions} from '../../../morphir-cli/config-processing'
+import configProcessing from '../../../morphir-cli/config-processing'
 
 describe('Test for Json Schema Config Processing',  () => {
 
