@@ -17,6 +17,7 @@ port module Morphir.Elm.CLI exposing (..)
 import Dict
 import Json.Decode as Decode exposing (field, string)
 import Json.Encode as Encode
+import Morphir.Codec exposing (encodeUnit)
 import Morphir.Correctness.Codec as TestCodec
 import Morphir.Correctness.Test exposing (TestSuite)
 import Morphir.Elm.Frontend as Frontend exposing (PackageInfo, SourceFile, SourceLocation)
@@ -32,9 +33,12 @@ import Morphir.File.FileSnapshot as FileSnapshot exposing (FileSnapshot)
 import Morphir.File.FileSnapshot.Codec as FileSnapshotCodec
 import Morphir.IR.Distribution as Distribution exposing (Distribution(..), lookupPackageName, lookupPackageSpecification)
 import Morphir.IR.FormatVersion.Codec as DistroCodec
+import Morphir.IR.Module.Codec as ModuleCodec
 import Morphir.IR.Name as Name exposing (Name)
+import Morphir.Simplify.Codec as SimplifyCodec
 import Morphir.IR.Package exposing (PackageName, Specification)
 import Morphir.IR.Path as Path exposing (Path)
+import Morphir.IR.Type.Codec as TypeCodec
 import Morphir.IR.Repo as Repo exposing (Error(..), Repo)
 import Morphir.IR.SDK as SDK
 import Morphir.JsonSchema.Backend
@@ -84,6 +88,12 @@ port testCoverage : (( Decode.Value, Decode.Value ) -> msg) -> Sub msg
 port testCoverageResult : Encode.Value -> Cmd msg
 
 
+port simplify : (Decode.Value -> msg) -> Sub msg
+
+
+port simplifyResult : Encode.Value -> Cmd msg
+
+
 subscriptions : () -> Sub Msg
 subscriptions _ =
     Sub.batch
@@ -92,6 +102,7 @@ subscriptions _ =
         , generate Generate
         , stats Stats
         , testCoverage TestCoverage
+        , simplify Simplify
         ]
 
 
@@ -120,6 +131,7 @@ type Msg
     | Generate ( Decode.Value, Decode.Value, Decode.Value )
     | Stats Decode.Value
     | TestCoverage ( Decode.Value, Decode.Value )
+    | Simplify Decode.Value
 
 
 main : Platform.Program () () Msg
@@ -380,8 +392,33 @@ process msg =
                         |> encodeTestCoverageError
                         |> testCoverageResult
 
+        Simplify packageDistJson ->
+            case Decode.decodeValue DistroCodec.decodeVersionedDistribution packageDistJson of
+                Ok (Library _ _ packageDef) ->
+                    packageDef.modules
+                        |> Dict.toList
+                        |> List.map
+                            (\( modulePath, accessControlledModuleDef ) ->
+                                let
+                                    fileName =
+                                        Path.toString Name.toTitleCase "." modulePath ++ ".json"
 
-report : Msg -> Cmd Msg
+                                    content =
+                                        accessControlledModuleDef.value
+                                            |> SimplifyCodec.encodeModuleDefinition
+                                            |> Encode.encode 2
+                                in
+                                ( ( [], fileName ), content )
+                            )
+                        |> Dict.fromList
+                        |> Ok
+                        |> encodeResult Encode.string encodeFileMap
+                        |> simplifyResult
+
+                Err errorMessage ->
+                    errorMessage
+                        |> Decode.errorToString
+                        |> jsonDecodeError
 report msg =
     case msg of
         BuildFromScratch _ ->
@@ -423,6 +460,9 @@ report msg =
 
         TestCoverage ( _, _ ) ->
             reportProgress "Generating Tests Coverage from testSuites ..."
+
+        Simplify _ ->
+            reportProgress "Simplifying IR per module ..."
 
 
 keepElmFilesOnly : FileChanges -> FileChanges

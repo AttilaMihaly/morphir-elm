@@ -27,6 +27,7 @@ program
     "Launches an interactive session to initialize a new morphir project."
   )
   .command("mcp", "Start a Model Context Protocol server for Morphir project interaction")
+  .command("simplify", "Generate a simplified per-module JSON representation of a Morphir IR")
   // transpile commands
   .command("scala-gen", "Generate scala code from Morphir IR")
   .command("snowpark-gen", "Generate Scala with Snowpark code from Morphir IR")

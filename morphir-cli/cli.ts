@@ -46,7 +46,7 @@ async function make(
   const dependencyConfig = DependencyConfig.parse({
     dependencies: morphirJson.dependencies,
     localDependencies: morphirJson.localDependencies,
-    includes: includes, 
+    includes: includes,
     projectDir: projectDir
   })
 
@@ -548,12 +548,58 @@ async function testCoverage(
   });
 }
 
+const simplify = async (input: string, outputPath: string, options: any) => {
+  await fsMakeDir(outputPath, { recursive: true });
+
+  const runSimplify = async (ir: any): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      worker.ports.jsonDecodeError.subscribe((err: any) => {
+        reject(err);
+      });
+      worker.ports.simplifyResult.subscribe(([err, ok]: any) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(ok);
+        }
+      });
+      worker.ports.simplify.send(ir);
+    });
+  };
+
+  const morphirIrJson: Buffer = await fsReadFile(path.resolve(input));
+  const files: string[] = await runSimplify(JSON.parse(morphirIrJson.toString()));
+
+  const writePromises = files.map(async ([[dirPath, fileName], content]: any) => {
+    const fileDir: string = dirPath.reduce(
+      (accum: string, next: string) => path.join(accum, next),
+      outputPath
+    );
+    const filePath: string = path.join(fileDir, fileName);
+
+    if (await fileExist(filePath)) {
+      const existingContent: Buffer = await fsReadFile(filePath);
+      if (existingContent.toString() !== content) {
+        await fsWriteFile(filePath, content);
+        console.log(`UPDATE - ${filePath}`);
+      }
+    } else {
+      await fsMakeDir(fileDir, { recursive: true });
+      await fsWriteFile(filePath, content);
+      console.log(`INSERT - ${filePath}`);
+    }
+  });
+
+  return Promise.all(writePromises);
+};
+
 export = {
   gen,
   make,
   writeFile,
   fileExist,
   stats,
+  simplify,
   writeDockerfile,
   findFilesToDelete,
   copyRedistributables,
