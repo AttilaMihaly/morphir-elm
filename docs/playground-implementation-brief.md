@@ -109,11 +109,48 @@ Key decisions and constraints:
 
 ### Phase 2 — post-launch (do not block launch on these)
 
+- **The "safety at scale" demonstration — see §5a below.** This is the flagship Phase 2 feature and has its own spec.
 - Reverse direction: "ask questions about this logic" (LLM reads the IR and explains — confirmed feasible in the 2025 Q&A).
 - Branch-coverage indicator on test cases ("2 of 7 branches untested").
 - Shareable permalinks to a generated model (requires persistence — revisit data policy then).
 - More export targets (Spark, Snowpark, JSON Schema), additional LLM providers, dark mode, embed widget for docs.
 - Expand the invite-code (Tier 2) program into a lightweight guided trial for business users if demand and funding materialize.
+
+## 5a. Level 2 offering — the "safety at scale" demonstration
+
+**Origin:** Attila, 2026-07. The 2025 talk argued Morphir gives *trust* (visualization, no unhandled cases). It never made the second argument: the constrained language also gives *safety at scale*. Because models are written in a non-general-purpose language — no IO, no FFI, no arbitrary code execution, total functions — the same logic can be handed to any execution technology (interpreter, JVM, Spark, Snowpark, browser) and run over arbitrarily large datasets **deterministically and safely**. You get an LLM-powered implementation engine that can express essentially any business problem, and at the same time a guarantee that what it produced cannot do anything except compute the answer. That "best of both worlds" claim is the message this feature exists to demonstrate — interactively, not as a slide.
+
+### User experience (target flow)
+
+After a model exists in the playground (replayed example or user-generated), a **"Run it at scale"** panel offers:
+
+1. **Generate a dataset.** One click produces N synthetic records (e.g., 1k / 10k / 100k, capped) conforming to the model's input types — derived automatically from the domain model, so richly-typed models produce realistic-looking varied data (enum variants distributed, optionals sometimes absent, numeric ranges sensible). Optionally let the LLM propose per-field generation hints (realistic ranges, weightings) as a refinement on top of type-driven generation.
+2. **Execute over the whole dataset** and stream results in: throughput counter, running aggregates (e.g., approved/rejected split, sum/avg of outputs), and a sampled results table the user can click into — each sampled row opens the standard execution-path visualization, connecting "big data" back to "I can see exactly why this row got this answer."
+3. **Show the same run on multiple engines.** At minimum two: the IR interpreter vs. generated TypeScript. Same inputs, same outputs, different speed — the visible speed difference *is* the portability lesson ("the model didn't change; the engine did"). Display the equivalence check ("100,000/100,000 results identical across engines") as a headline number.
+4. **Show the path to real scale.** Render the generated Spark and/or Snowpark code for this exact model side-by-side, with copy: "this same model, unchanged, runs on your cluster / your warehouse." Do NOT operate a real cluster (see non-goals).
+5. **Safety framing throughout the panel:** a persistent note along the lines of "This logic cannot read files, call networks, or execute arbitrary code — not because we sandboxed it, but because the language it's written in has no way to express those things. That's why we can run untrusted, AI-written logic at full speed."
+
+### Implementation notes — reuse, don't rebuild
+
+| Need | Existing asset |
+|---|---|
+| Type-driven random data generation | `src/Morphir/Generator/API.elm` + `ValueGenerators.elm` in morphir-elm; CLI command `cli2/morphir-generate-test-data.ts`. Verify current state; extend with per-field hints if cheap. |
+| Precedent for synthetic regulatory data | `finos/open-reg-tech-us-lcr/tools/generator_Inflow.py` etc. (Python, type-shape-driven) — precedent/reference, not a dependency. |
+| Bulk execution, zero server cost | **Generated TypeScript running in a Web Worker in the visitor's browser.** This is the recommended primary engine for the scale demo: it executes *real generated code* (not just the interpreter) over 100k+ rows, costs the server nothing, is browser-sandboxed on top of being language-constrained, and works in Tier 0 (no API key needed — data gen and execution involve no LLM). |
+| Comparison engine | `Morphir.Value.Interpreter` (can run browser-side via compiled Elm, or server-side) — the slow-but-authoritative baseline for the equivalence check. |
+| Cluster-scale story | Spark backend (`src/Morphir/Spark/`) and Snowpark backend (`src/Morphir/Snowpark/`) — display generated code only. Note the Snowpark docs' honest limitation reports (recursion, "plain Scala strategy" coverage); pick showcase models that generate cleanly, and surface the backend's own `GenerationReport.md`-style gap reporting as a *transparency feature* if gaps appear. |
+
+Constraints: cap dataset size and worker runtime (total language still permits expensive recursion); generate data client-side or stream it — don't hold 100k-row datasets in server sessions; the whole feature should work in Tier 0 so it's part of the key-less experience.
+
+### Non-goals for this feature
+
+- No hosted Spark/Snowflake execution and no cluster operation — the generated code on screen is the proof; running someone's warehouse is a services business, not a playground feature.
+- No attempt at statistically realistic domain data (that's the separate eval project's concern); "plausible-looking and type-correct" is the bar.
+- Ship it after the MVP launch. It is the second act, and it gives the launch audience a reason to come back — but the first launch must not wait for it.
+
+### Messaging hook (for landing page and launch content)
+
+"Powerful enough to express any business logic. Constrained enough that you can run it, unreviewed, over a hundred thousand records in your browser tab — or on your Spark cluster — and nothing bad can happen. That's the point of not using a general-purpose language."
 
 ### Explicit non-goals (protect the schedule)
 
@@ -128,7 +165,7 @@ Key decisions and constraints:
 
 - **Time-to-aha under 3 minutes, with zero keys and zero cost.** The replayed curated examples are the first-visit experience: two clicks to watch logic get built, then hands-on interaction (test cases, input editing, export) with no key required. Composing a custom prompt (and hence the key ask) comes only after the visitor is already convinced.
 - **The key ask must not read as a paywall.** Frame it as: "Custom prompts use your own LLM key — it never leaves your browser, and this site is open source so you can check." Show the curated examples and the video *before* any key prompt appears. Never gate the visualization, test cases, or export behind a key.
-- Landing copy leads with the trust framing, not FP or IR jargon. Working headline direction: "AI writes the logic. You can actually verify it." Sub-copy can borrow directly from the 2025 talk: LLMs need control more than freedom; constraints are why the output is visualizable and provably total (no unhandled cases).
+- Landing copy leads with the trust framing, not FP or IR jargon. Working headline direction: "AI writes the logic. You can actually verify it." Sub-copy can borrow directly from the 2025 talk: LLMs need control more than freedom; constraints are why the output is visualizable and provably total (no unhandled cases). Once §5a ships, the copy gains the second argument: the same constraints make the logic *safe to execute at any scale on any engine* (see §5a messaging hook).
 - Never show the words "Elm", "IR", or "functional" above the fold. They're available in the "how it works" section and the source toggle for developers who dig.
 - Include a short "why not just generate Python?" section — this was the most-asked question at the 2025 talk and the answer (side-by-side: same prompt → raw Java mess vs. Morphir decision table + tests) is the strongest conversion argument. A static comparison screenshot is fine for MVP.
 - Every generated view should have a "this translation is deterministic, human-written compiler code — not AI" affordance somewhere visible.
